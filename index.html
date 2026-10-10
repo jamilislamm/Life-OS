@@ -1,0 +1,4733 @@
+<!doctype html>
+<html lang="bn" data-theme="light">
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyC5hJwhdAv6XQuk8GQziRjHBVnHjQJ3HDA",
+      authDomain: "life-os-108be.firebaseapp.com",
+      projectId: "life-os-108be",
+      storageBucket: "life-os-108be.firebasestorage.app",
+      messagingSenderId: "445266548365",
+      appId: "1:445266548365:web:9ab24e1bf7ee32560a74c4",
+    };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    let currentUser = null;
+    let cloudReady = false;
+    let saveTimer = null;
+    let pendingState = null;
+    const userDoc = (uid) => doc(db, "users", uid, "appData", "main");
+
+    function authPanel() {
+      if (document.getElementById('lifeos-auth-panel')) return;
+      const style = document.createElement('style');
+      style.textContent = `#lifeos-auth-panel{position:fixed;inset:0;z-index:99999;background:var(--bg,#f4f6fb);color:var(--text,#172033);display:flex;align-items:center;justify-content:center;padding:20px;font-family:inherit}#lifeos-auth-panel .authbox{width:min(440px,100%);background:var(--card,#fff);border:1px solid var(--border,#ddd);border-radius:18px;padding:24px;box-shadow:0 12px 40px #0002}#lifeos-auth-panel h2{margin:0 0 8px}#lifeos-auth-panel p{line-height:1.55}#lifeos-auth-panel input{box-sizing:border-box;width:100%;padding:12px;margin:6px 0 12px;border:1px solid #bbb;border-radius:9px;font:inherit}#lifeos-auth-panel button{padding:11px 14px;border-radius:9px;border:1px solid #aaa;cursor:pointer;font:inherit;margin:4px 4px 4px 0}#lifeos-auth-panel .authprimary{background:#2459d3;color:white;border-color:#2459d3}#lifeos-auth-panel .authmsg{min-height:24px;font-size:14px;white-space:pre-wrap}#lifeos-auth-panel .authhidden{display:none}`;
+      document.head.appendChild(style);
+      const el = document.createElement('div'); el.id='lifeos-auth-panel';
+      el.innerHTML = `<div class="authbox"><h2>Life OS Account</h2><p>তোমার ডেটা অ্যাকাউন্টে সেভ হবে, তাই একই ইমেইল দিয়ে অন্য ডিভাইসেও ব্যবহার করতে পারবে।</p><label for="lifeos-email">Email</label><input id="lifeos-email" type="email" autocomplete="email" placeholder="you@example.com"><label for="lifeos-password">Password</label><input id="lifeos-password" type="password" autocomplete="current-password" placeholder="কমপক্ষে ৬ অক্ষর"><div><button class="authprimary" id="lifeos-login">Login</button><button id="lifeos-signup">Create account</button><button id="lifeos-logout" class="authhidden">Log out</button></div><div id="lifeos-auth-msg" class="authmsg" role="status"></div><div id="lifeos-migration" class="authhidden"><hr><h3>এই অ্যাকাউন্টে এখনও ডেটা নেই</h3><p>তোমার JSON Backup থাকলে সেটি আপলোড করাই সবচেয়ে নিরাপদ। চাইলে এই ব্রাউজারের ডেটা কপি করতে পারো, অথবা নতুন করে শুরু করতে পারো।</p><button class="authprimary" id="lifeos-migrate">এই ব্রাউজারের ডেটা Cloud-এ কপি করো</button><button id="lifeos-import-backup">JSON Backup থেকে ডেটা নাও</button><input id="lifeos-backup-file" type="file" accept=".json,application/json" style="display:none"><button id="lifeos-empty">নতুন করে শুরু</button></div><div id="lifeos-cloud-status" class="authhidden"><hr><p>Cloud ডেটা লোড হচ্ছে…</p></div></div>`;
+      document.body.appendChild(el);
+      const msg = (t) => { document.getElementById('lifeos-auth-msg').textContent=t; };
+      const email = () => document.getElementById('lifeos-email').value.trim();
+      const password = () => document.getElementById('lifeos-password').value;
+      document.getElementById('lifeos-login').onclick = async () => { try { msg('Login হচ্ছে…'); await signInWithEmailAndPassword(auth,email(),password()); } catch(e) { msg(authError(e)); } };
+      document.getElementById('lifeos-signup').onclick = async () => { try { msg('Account তৈরি হচ্ছে…'); await createUserWithEmailAndPassword(auth,email(),password()); } catch(e) { msg(authError(e)); } };
+      document.getElementById('lifeos-logout').onclick = async () => { cloudReady=false; await signOut(auth); };
+      document.getElementById('lifeos-migrate').onclick = async () => { try { const data=window.lifeOSApp?.getState(); if(!data) throw new Error('App state unavailable'); await setDoc(userDoc(currentUser.uid),{state:data,updatedAt:serverTimestamp()}); await activateApp(data); } catch(e) { msg('Cloud-এ ডেটা সেভ হয়নি: '+authError(e)); } };
+      document.getElementById('lifeos-import-backup').onclick = () => document.getElementById('lifeos-backup-file').click();
+      document.getElementById('lifeos-backup-file').onchange = async (ev) => {
+        const file=ev.target.files?.[0]; if(!file) return;
+        try {
+          const parsed=JSON.parse(await file.text());
+          if(!parsed || !Array.isArray(parsed.actions) || !Array.isArray(parsed.categories) || !Array.isArray(parsed.logs) || !Array.isArray(parsed.presets)) throw new Error('এই JSON ফাইলটি Life OS backup নয়।');
+          if(!confirm('এই JSON Backup-এর ডেটা তোমার Firebase অ্যাকাউন্টে আপলোড হবে। চালিয়ে যাবে?')) return;
+          const data={...parsed}; delete data.exportedAt;
+          await setDoc(userDoc(currentUser.uid),{state:data,updatedAt:serverTimestamp()});
+          await activateApp(data);
+        } catch(e) { msg('Backup import হয়নি: '+(e?.message || authError(e))); }
+        finally { ev.target.value=''; }
+      };
+      document.getElementById('lifeos-empty').onclick = async () => { try { const data=window.lifeOSApp?.emptyState(); await setDoc(userDoc(currentUser.uid),{state:data,updatedAt:serverTimestamp()}); await activateApp(data); } catch(e) { msg('সমস্যা হয়েছে: '+authError(e)); } };
+      window.lifeOSAuthMessage = msg;
+    }
+    function authError(e) {
+      const map={ 'auth/invalid-email':'ইমেইল ঠিক নয়।','auth/missing-password':'পাসওয়ার্ড লিখো।','auth/weak-password':'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হওয়া দরকার।','auth/email-already-in-use':'এই ইমেইলে অ্যাকাউন্ট আছে; Login করো।','auth/invalid-credential':'ইমেইল বা পাসওয়ার্ড সঠিক নয়।','auth/network-request-failed':'ইন্টারনেট সংযোগ পরীক্ষা করো।','permission-denied':'Firestore Rules পরীক্ষা করতে হবে।' };
+      return map[e?.code] || (e?.message || 'অজানা সমস্যা হয়েছে।');
+    }
+    async function activateApp(data) {
+      cloudReady=false;
+      window.lifeOSApp?.setState(data);
+      cloudReady=true;
+      document.getElementById('lifeos-auth-panel').style.display='none';
+      document.getElementById('lifeos-userbar')?.remove();
+      const bar=document.createElement('div'); bar.id='lifeos-userbar';
+      bar.style.cssText='position:sticky;top:0;z-index:9999;background:#e8f0ff;color:#18366f;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;font:14px system-ui';
+      bar.innerHTML=`<span>Cloud Sync: <strong>${currentUser.email}</strong></span><button id="lifeos-bar-logout" style="padding:6px 10px;cursor:pointer">Log out</button>`;
+      document.body.prepend(bar);
+      document.getElementById('lifeos-bar-logout').onclick=async()=>{cloudReady=false;await signOut(auth);};
+    }
+    window.lifeOSFirebase = {
+      save(data) { if (!currentUser || !cloudReady) return; pendingState=data; clearTimeout(saveTimer); saveTimer=setTimeout(async()=>{ const snapshot=pendingState; try { await setDoc(userDoc(currentUser.uid),{state:snapshot,updatedAt:serverTimestamp()}); } catch(e) { console.error('Cloud save failed',e); window.lifeOSApp?.notify?.('Cloud sync হয়নি। ইন্টারনেট ও Firestore Rules পরীক্ষা করো।'); } },700); },
+    };
+    window.addEventListener('DOMContentLoaded', authPanel);
+    onAuthStateChanged(auth, async (user) => {
+      currentUser=user; cloudReady=false;
+      const panel=document.getElementById('lifeos-auth-panel');
+      if (!panel) authPanel();
+      const p=document.getElementById('lifeos-auth-panel');
+      p.style.display='flex';
+      document.getElementById('lifeos-logout').classList.toggle('authhidden',!user);
+      document.getElementById('lifeos-login').classList.toggle('authhidden',!!user);
+      document.getElementById('lifeos-signup').classList.toggle('authhidden',!!user);
+      document.getElementById('lifeos-migration').classList.add('authhidden');
+      if (!user) { window.lifeOSAuthMessage?.('Login করো অথবা নতুন অ্যাকাউন্ট তৈরি করো।'); document.getElementById('lifeos-email').disabled=false; document.getElementById('lifeos-password').disabled=false; return; }
+      document.getElementById('lifeos-email').value=user.email||'';
+      document.getElementById('lifeos-email').disabled=true; document.getElementById('lifeos-password').disabled=true;
+      window.lifeOSAuthMessage?.('তোমার Cloud ডেটা খোঁজা হচ্ছে…');
+      try {
+        const snap=await getDoc(userDoc(user.uid));
+        if (snap.exists() && snap.data().state) await activateApp(snap.data().state);
+        else { document.getElementById('lifeos-migration').classList.remove('authhidden'); window.lifeOSAuthMessage?.('এই অ্যাকাউন্টে ডেটা পাওয়া যায়নি। নিচের একটি বিকল্প বেছে নাও।'); }
+      } catch(e) { window.lifeOSAuthMessage?.('Cloud ডেটা পড়া যায়নি: '+authError(e)+'
+Firestore Rules ঠিক আছে কি না দেখো।'); }
+    });
+  </script>
+  <head>
+    <meta charset="utf-8" />
+    <script>
+      try {
+        var _t = localStorage.getItem("lifeOS.theme");
+        if (_t) document.documentElement.setAttribute("data-theme", _t);
+      } catch (e) {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Noto+Color+Emoji&display=swap"
+      rel="stylesheet"
+    />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#4f46e5" />
+    <title>Life OS — Personal Life Manager</title>
+    <style>
+      /* ============================================================
+         Life OS — Design System
+         ============================================================ */
+      :root {
+        --font:
+          "Inter", "Noto Sans Bengali", ui-sans-serif, system-ui, -apple-system,
+          "Segoe UI", Roboto, "Apple Color Emoji", "Segoe UI Emoji",
+          "Noto Color Emoji", sans-serif;
+
+        --accent: #4f46e5;
+        --accent-2: #8b5cf6;
+        --accent-grad: linear-gradient(
+          135deg,
+          #4f46e5 0%,
+          #7c3aed 55%,
+          #a855f7 100%
+        );
+        --accent-soft: #eef0ff;
+        --accent-strong: #3f37c9;
+
+        --bg: #eef1f8;
+        --glass: rgba(255, 255, 255, 0.72);
+        --panel: #ffffff;
+        --panel-2: #f7f9fc;
+        --hover: #f1f5fb;
+        --text: #0f1729;
+        --muted: #64748b;
+        --line: #e3e8f2;
+        --line-2: #eef2f8;
+        --line-strong: #c9d3e3;
+
+        --danger: #dc2626;
+        --danger-bg: #fef2f2;
+        --danger-line: #fecaca;
+        --green: #059669;
+        --green-bg: #ecfdf5;
+        --green-line: #a7f3d0;
+        --amber: #b45309;
+        --amber-bg: #fffbeb;
+        --amber-line: #fde68a;
+        --info: #3730a3;
+        --info-bg: #eef2ff;
+        --info-line: #c7d2fe;
+
+        --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+        --shadow: 0 12px 32px -18px rgba(15, 23, 42, 0.35);
+        --shadow-lg: 0 30px 60px -30px rgba(15, 23, 42, 0.45);
+        --ring: 0 0 0 4px rgba(79, 70, 229, 0.18);
+
+        --radius: 22px;
+        --radius-sm: 14px;
+        --ease: cubic-bezier(0.2, 0.75, 0.3, 1);
+      }
+
+      html[data-theme="dark"] {
+        --accent: #818cf8;
+        --accent-2: #c084fc;
+        --accent-grad: linear-gradient(
+          135deg,
+          #6366f1 0%,
+          #8b5cf6 55%,
+          #a855f7 100%
+        );
+        --accent-soft: #1b2242;
+        --accent-strong: #c7d2fe;
+
+        --bg: #070b15;
+        --glass: rgba(17, 24, 39, 0.72);
+        --panel: #0f1728;
+        --panel-2: #131c30;
+        --hover: #182238;
+        --text: #e8eefb;
+        --muted: #8fa0bd;
+        --line: #1e2942;
+        --line-2: #18223a;
+        --line-strong: #31405e;
+
+        --danger: #f87171;
+        --danger-bg: #2a1518;
+        --danger-line: #7f1d1d;
+        --green: #34d399;
+        --green-bg: #0c2620;
+        --green-line: #065f46;
+        --amber: #fbbf24;
+        --amber-bg: #2a2008;
+        --amber-line: #78350f;
+        --info: #a5b4fc;
+        --info-bg: #161f3a;
+        --info-line: #312e81;
+
+        --shadow: 0 12px 32px -18px rgba(0, 0, 0, 0.9);
+        --shadow-lg: 0 30px 60px -30px rgba(0, 0, 0, 1);
+        --ring: 0 0 0 4px rgba(129, 140, 248, 0.25);
+      }
+
+      html {
+        color-scheme: light;
+      }
+      html[data-theme="dark"] {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+        overflow-x: hidden;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* ambient background */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: -20%;
+        z-index: -1;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            46rem 32rem at 6% -8%,
+            rgba(99, 102, 241, 0.22),
+            transparent 62%
+          ),
+          radial-gradient(
+            42rem 30rem at 100% 2%,
+            rgba(168, 85, 247, 0.18),
+            transparent 62%
+          ),
+          radial-gradient(
+            40rem 30rem at 46% 108%,
+            rgba(14, 165, 233, 0.16),
+            transparent 62%
+          );
+        animation: drift 26s ease-in-out infinite;
+      }
+      html[data-theme="dark"] body::before {
+        background:
+          radial-gradient(
+            46rem 32rem at 6% -8%,
+            rgba(99, 102, 241, 0.28),
+            transparent 62%
+          ),
+          radial-gradient(
+            42rem 30rem at 100% 2%,
+            rgba(168, 85, 247, 0.2),
+            transparent 62%
+          ),
+          radial-gradient(
+            40rem 30rem at 46% 108%,
+            rgba(14, 165, 233, 0.16),
+            transparent 62%
+          );
+      }
+      @keyframes drift {
+        0%,
+        100% {
+          transform: translate3d(0, 0, 0) scale(1);
+        }
+        50% {
+          transform: translate3d(-2.2%, 2%, 0) scale(1.07);
+        }
+      }
+
+      /* scrollbars */
+      ::-webkit-scrollbar {
+        width: 11px;
+        height: 11px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--line-strong);
+        border: 3px solid transparent;
+        background-clip: content-box;
+        border-radius: 99px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--muted);
+        background-clip: content-box;
+      }
+
+      /* ============================================================
+         Typography helpers
+         ============================================================ */
+      h1,
+      h2,
+      h3 {
+        letter-spacing: -0.015em;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .tiny {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .dangertext {
+        color: var(--danger);
+      }
+      .hidden {
+        display: none !important;
+      }
+
+      /* ============================================================
+         Controls
+         ============================================================ */
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: var(--text);
+      }
+
+      button {
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 9px 14px;
+        font-size: 14px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        white-space: nowrap;
+        transition:
+          background 0.18s var(--ease),
+          border-color 0.18s var(--ease),
+          color 0.18s var(--ease),
+          box-shadow 0.18s var(--ease),
+          transform 0.12s var(--ease),
+          filter 0.18s var(--ease);
+      }
+      button:hover {
+        border-color: var(--line-strong);
+        background: var(--hover);
+      }
+      button:active {
+        transform: translateY(1px) scale(0.985);
+      }
+      button:focus-visible {
+        outline: none;
+        box-shadow: var(--ring);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      button.primary {
+        background: var(--accent-grad);
+        border-color: transparent;
+        color: #fff;
+        box-shadow: 0 12px 26px -14px var(--accent);
+      }
+      button.primary:hover {
+        filter: brightness(1.08);
+        background: var(--accent-grad);
+        border-color: transparent;
+      }
+
+      button.danger {
+        color: var(--danger);
+        border-color: var(--danger-line);
+        background: transparent;
+      }
+      button.danger:hover {
+        background: var(--danger-bg);
+        border-color: var(--danger);
+      }
+
+      button.ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--muted);
+      }
+      button.ghost:hover {
+        background: var(--hover);
+        color: var(--text);
+        border-color: transparent;
+      }
+
+      button.small {
+        font-size: 12.5px;
+        padding: 6px 10px;
+        border-radius: 10px;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 10px 12px;
+        min-width: 0;
+        transition:
+          border-color 0.18s var(--ease),
+          box-shadow 0.18s var(--ease),
+          background 0.18s var(--ease);
+      }
+      input:hover,
+      select:hover,
+      textarea:hover {
+        border-color: var(--line-strong);
+      }
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: var(--ring);
+      }
+      input[type="checkbox"] {
+        width: auto;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+      input[type="date"] {
+        cursor: pointer;
+      }
+      select {
+        cursor: pointer;
+        appearance: none;
+        background-image:
+          linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+          linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+        background-position:
+          calc(100% - 17px) calc(50% + 1px),
+          calc(100% - 12px) calc(50% + 1px);
+        background-size:
+          5px 5px,
+          5px 5px;
+        background-repeat: no-repeat;
+        padding-right: 32px;
+      }
+      textarea {
+        min-height: 84px;
+        resize: vertical;
+        line-height: 1.55;
+      }
+
+      /* ============================================================
+         Layout
+         ============================================================ */
+      .app {
+        display: grid;
+        grid-template-columns: 284px minmax(0, 1fr);
+        gap: 22px;
+        max-width: 1480px;
+        margin: 0 auto;
+        padding: 22px;
+        align-items: start;
+      }
+
+      /* ---------- Sidebar ---------- */
+      .sidebar {
+        position: sticky;
+        top: 22px;
+        align-self: start;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding: 20px 16px;
+        max-height: calc(100vh - 44px);
+        overflow: auto;
+        background: var(--glass);
+        -webkit-backdrop-filter: blur(20px) saturate(1.4);
+        backdrop-filter: blur(20px) saturate(1.4);
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        box-shadow: var(--shadow);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 4px 6px 0;
+      }
+      .brand .logo {
+        flex: none;
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        background: var(--accent-grad);
+        color: #fff;
+        font-size: 20px;
+        box-shadow: 0 14px 28px -14px var(--accent);
+      }
+      .brand h1 {
+        font-size: 20px;
+        margin: 0;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+      .brand p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
+      .nav {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .nav button {
+        position: relative;
+        width: 100%;
+        justify-content: flex-start;
+        text-align: left;
+        gap: 12px;
+        padding: 11px 12px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        font-size: 14.5px;
+        border-radius: 14px;
+      }
+      .nav button:hover {
+        background: var(--hover);
+        color: var(--text);
+        border-color: transparent;
+      }
+      .nav button .nav-ico {
+        flex: none;
+        width: 20px;
+        height: 20px;
+        display: grid;
+        place-items: center;
+        opacity: 0.85;
+      }
+      .nav button .nav-ico svg {
+        width: 19px;
+        height: 19px;
+      }
+      .nav button.active {
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        border-color: transparent;
+        font-weight: 700;
+      }
+      .nav button.active .nav-ico {
+        opacity: 1;
+      }
+      .nav button.active::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 3px;
+        height: 20px;
+        border-radius: 99px;
+        background: var(--accent-grad);
+      }
+
+      .sidebar-foot {
+        margin-top: auto;
+        padding: 12px;
+        border-radius: 16px;
+        background: var(--panel-2);
+        border: 1px solid var(--line-2);
+      }
+
+      /* ---------- Main ---------- */
+      .main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding-bottom: 8px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        flex-wrap: wrap;
+        padding: 4px 2px;
+      }
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      #themeToggle {
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        font-size: 16px;
+        border-radius: 12px;
+      }
+
+      /* ---------- Pages ---------- */
+      .page {
+        display: none;
+      }
+      .page.active {
+        display: block;
+        animation: pageIn 0.45s var(--ease) both;
+      }
+      @keyframes pageIn {
+        from {
+          opacity: 0;
+          transform: translateY(12px) scale(0.994);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      .page.active > .grid > .card {
+        animation: cardIn 0.5s var(--ease) both;
+      }
+      .page.active > .grid > .card:nth-child(1) {
+        animation-delay: 0.02s;
+      }
+      .page.active > .grid > .card:nth-child(2) {
+        animation-delay: 0.06s;
+      }
+      .page.active > .grid > .card:nth-child(3) {
+        animation-delay: 0.1s;
+      }
+      .page.active > .grid > .card:nth-child(4) {
+        animation-delay: 0.14s;
+      }
+      .page.active > .grid > .card:nth-child(5) {
+        animation-delay: 0.18s;
+      }
+      .page.active > .grid > .card:nth-child(6) {
+        animation-delay: 0.22s;
+      }
+      @keyframes cardIn {
+        from {
+          opacity: 0;
+          transform: translateY(14px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      /* ---------- Grid ---------- */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .span12 {
+        grid-column: span 12;
+      }
+      .span8 {
+        grid-column: span 8;
+      }
+      .span7 {
+        grid-column: span 7;
+      }
+      .span6 {
+        grid-column: span 6;
+      }
+      .span5 {
+        grid-column: span 5;
+      }
+      .span4 {
+        grid-column: span 4;
+      }
+
+      /* ---------- Card ---------- */
+      .card {
+        position: relative;
+        min-width: 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 22px;
+        box-shadow: var(--shadow);
+        transition:
+          box-shadow 0.3s var(--ease),
+          border-color 0.3s var(--ease),
+          transform 0.3s var(--ease);
+      }
+      .card:hover {
+        box-shadow: var(--shadow-lg);
+        border-color: var(--line-strong);
+      }
+      .card h2 {
+        font-size: 17px;
+        margin: 0 0 12px;
+        font-weight: 750;
+      }
+      .card h3 {
+        font-size: 14.5px;
+        margin: 0 0 8px;
+        font-weight: 700;
+      }
+
+      /* ---------- Utility ---------- */
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+      }
+      .between {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+      .field {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+      .field > label {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.01em;
+      }
+      .formgrid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .formgrid .full {
+        grid-column: 1 / -1;
+      }
+      .checkboxrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+
+      .sectionhead {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+      .sectionhead h2 {
+        margin: 0;
+      }
+      .sectionhead p {
+        margin: 4px 0 0;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        padding: 4px 11px;
+        font-size: 12px;
+        font-weight: 650;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .pill.red {
+        background: var(--danger-bg);
+        color: var(--danger);
+        border-color: var(--danger-line);
+      }
+      .pill.green {
+        background: var(--green-bg);
+        color: var(--green);
+        border-color: var(--green-line);
+      }
+
+      /* live pulse dot for tracking pills */
+      #todayTasks .pill.green::before,
+      #trackingMini .pill.green::before,
+      #focusMini .pill.green::before,
+      #trackingCurrent .pill.green::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: pulseDot 1.5s ease-in-out infinite;
+      }
+      @keyframes pulseDot {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.3;
+          transform: scale(0.65);
+        }
+      }
+
+      .metric {
+        font-size: 30px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.15;
+        font-variant-numeric: tabular-nums;
+      }
+      .metric.danger {
+        color: var(--danger);
+        animation: warnPulse 1.6s ease-in-out infinite;
+      }
+      @keyframes warnPulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .stat {
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: var(--panel-2);
+        border: 1px solid var(--line-2);
+        border-left: 3px solid var(--accent);
+      }
+      .stat .stat-label {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+
+      .progress {
+        height: 8px;
+        background: var(--line-2);
+        border-radius: 99px;
+        overflow: hidden;
+      }
+      .progress > span {
+        display: block;
+        height: 100%;
+        width: 0;
+        border-radius: 99px;
+        background: var(--accent-grad);
+        box-shadow: 0 0 14px -2px var(--accent);
+        transition: width 0.7s var(--ease);
+      }
+
+      /* ---------- Lists ---------- */
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+      .item {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel-2);
+        padding: 13px 14px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        min-width: 0;
+        transition:
+          border-color 0.2s var(--ease),
+          background 0.2s var(--ease),
+          transform 0.2s var(--ease),
+          box-shadow 0.2s var(--ease);
+      }
+      .item:hover {
+        border-color: var(--line-strong);
+        background: var(--panel);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-sm);
+      }
+      .item .content {
+        flex: 1;
+        min-width: 0;
+      }
+      .item .content strong {
+        display: block;
+        font-size: 14.5px;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .item .actions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .item.done {
+        opacity: 0.6;
+      }
+      .item.done strong {
+        text-decoration: line-through;
+        text-decoration-thickness: 1.5px;
+      }
+
+      .grouphead {
+        margin-top: 14px;
+        font-size: 11.5px;
+        font-weight: 800;
+        color: var(--muted);
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+      .grouphead:first-child {
+        margin-top: 0;
+      }
+
+      .empty {
+        padding: 28px 20px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13.5px;
+        border: 1.5px dashed var(--line-strong);
+        border-radius: 16px;
+        background: var(--panel-2);
+      }
+
+      .notice {
+        border-radius: 14px;
+        padding: 12px 14px;
+        background: var(--info-bg);
+        color: var(--info);
+        border: 1px solid var(--info-line);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .notice.warn {
+        background: var(--amber-bg);
+        color: var(--amber);
+        border-color: var(--amber-line);
+      }
+      .notice.error {
+        background: var(--danger-bg);
+        color: var(--danger);
+        border-color: var(--danger-line);
+      }
+
+      /* ---------- Tables ---------- */
+      .tablewrap {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+      }
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 14px;
+      }
+      th {
+        text-align: left;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+        font-weight: 800;
+        padding: 12px 14px;
+        background: var(--panel-2);
+        border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line-2);
+        vertical-align: top;
+        line-height: 1.55;
+      }
+      tbody tr {
+        transition: background 0.16s var(--ease);
+      }
+      tbody tr:hover {
+        background: var(--panel-2);
+      }
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      /* ---------- More menu ---------- */
+      .more-menu {
+        position: relative;
+      }
+      .more-menu summary {
+        list-style: none;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 10px;
+        padding: 6px 10px;
+        color: var(--muted);
+        font-weight: 800;
+        font-size: 12px;
+        line-height: 1;
+        transition:
+          background 0.18s var(--ease),
+          border-color 0.18s var(--ease),
+          color 0.18s var(--ease);
+      }
+      .more-menu summary:hover {
+        background: var(--hover);
+        color: var(--text);
+        border-color: var(--line-strong);
+      }
+      .more-menu summary::-webkit-details-marker {
+        display: none;
+      }
+      .more-menu-pop {
+        position: absolute;
+        right: 0;
+        top: 36px;
+        z-index: 20;
+        display: grid;
+        gap: 5px;
+        min-width: 148px;
+        padding: 8px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: var(--shadow-lg);
+        animation: popIn 0.18s var(--ease) both;
+      }
+      @keyframes popIn {
+        from {
+          opacity: 0;
+          transform: translateY(-6px) scale(0.97);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .more-menu:not([open]) .more-menu-pop {
+        display: none;
+      }
+      .more-menu-pop button {
+        justify-content: flex-start;
+        width: 100%;
+      }
+
+      /* ============================================================
+         Dashboard specifics
+         ============================================================ */
+      .filters {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+      .filters select {
+        max-width: 260px;
+      }
+      #dashboardDate {
+        width: auto;
+        min-width: 158px;
+      }
+
+      .track-controls {
+        margin-top: 14px;
+        gap: 8px;
+      }
+      #startTrackingAction {
+        flex: 1 1 170px;
+        min-width: 0;
+      }
+      #startTrackingBtn,
+      #stopTrackingBtn {
+        flex: none;
+      }
+
+      /* ---------- Focus ---------- */
+      .focus-preset {
+        max-width: 440px;
+        margin: 0 auto;
+      }
+      .timerface {
+        position: relative;
+        max-width: 660px;
+        margin: 16px auto 0;
+        padding: 28px 18px 22px;
+        text-align: center;
+        border-radius: 24px;
+        border: 1px solid var(--line);
+        background:
+          radial-gradient(
+            120% 110% at 50% 0%,
+            rgba(99, 102, 241, 0.14),
+            transparent 68%
+          ),
+          var(--panel-2);
+        overflow: hidden;
+      }
+      .timerface::after {
+        content: "";
+        position: absolute;
+        inset: -40% 25% auto;
+        height: 60%;
+        background: radial-gradient(
+          closest-side,
+          rgba(139, 92, 246, 0.22),
+          transparent
+        );
+        filter: blur(30px);
+        pointer-events: none;
+      }
+      .timername {
+        position: relative;
+        font-size: 13.5px;
+        font-weight: 650;
+        color: var(--muted);
+        letter-spacing: 0.01em;
+      }
+      .timebig {
+        position: relative;
+        font-size: clamp(46px, 8vw, 78px);
+        font-weight: 800;
+        letter-spacing: -0.045em;
+        line-height: 1.08;
+        font-variant-numeric: tabular-nums;
+        margin: 6px 0 2px;
+        color: var(--accent);
+      }
+      @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+        .timebig {
+          background: var(--accent-grad);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          filter: drop-shadow(0 10px 24px rgba(79, 70, 229, 0.25));
+        }
+        .timebig.overtime {
+          background: linear-gradient(135deg, #f43f5e, #fb923c);
+          -webkit-background-clip: text;
+          background-clip: text;
+        }
+      }
+      .timebig.overtime {
+        color: var(--danger);
+      }
+      .timerstatus {
+        position: relative;
+        margin: 10px 0 18px;
+        font-size: 13.5px;
+      }
+      .focus-controls {
+        position: relative;
+        justify-content: center;
+        gap: 10px;
+      }
+      #focusAlert {
+        max-width: 620px;
+        margin: 14px auto 0;
+      }
+      #dashboardPhaseEditor {
+        max-width: 620px;
+        margin: 14px auto 0;
+      }
+      #focusNameWrap {
+        max-width: 440px;
+        margin: 14px auto 0;
+      }
+      .focus-save {
+        justify-content: center;
+        margin-top: 14px;
+      }
+      #dashboardAddPhase {
+        border-style: dashed;
+        color: var(--muted);
+        width: 100%;
+        padding: 10px;
+      }
+      #dashboardAddPhase:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .phase-row {
+        align-items: flex-end;
+      }
+      .phase-idx {
+        flex: none;
+        width: 26px;
+        height: 26px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 800;
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        margin-bottom: 3px;
+      }
+      .phase-num {
+        max-width: 96px;
+      }
+
+      /* ---------- Schedule day chips ---------- */
+      .schedule-days {
+        gap: 8px;
+      }
+      .schedule-days .checkboxrow {
+        padding: 7px 13px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+        transition:
+          background 0.18s var(--ease),
+          border-color 0.18s var(--ease),
+          color 0.18s var(--ease),
+          transform 0.12s var(--ease);
+      }
+      .schedule-days .checkboxrow:hover {
+        border-color: var(--accent);
+        color: var(--text);
+        transform: translateY(-1px);
+      }
+      .schedule-days .checkboxrow:has(input:checked) {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+        color: var(--accent-strong);
+      }
+      .schedule-days input[type="checkbox"] {
+        display: none;
+      }
+
+      /* switch style for overtime */
+      .switch {
+        padding: 7px 13px 7px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        font-size: 12.5px;
+        font-weight: 650;
+        color: var(--muted);
+        transition:
+          border-color 0.18s var(--ease),
+          background 0.18s var(--ease),
+          color 0.18s var(--ease);
+      }
+      .switch:has(input:checked) {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+        color: var(--accent-strong);
+      }
+
+      /* ---------- Log filter row ---------- */
+      #logFilterDate {
+        max-width: 180px;
+      }
+      #logFilterAction {
+        max-width: 250px;
+      }
+
+      /* ============================================================
+         Modal
+         ============================================================ */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(8, 13, 26, 0.55);
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+        animation: fadeIn 0.2s var(--ease) both;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      .modal {
+        width: 100%;
+        max-width: 520px;
+        max-height: calc(100vh - 32px);
+        overflow: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: var(--shadow-lg);
+        animation: modalIn 0.3s var(--ease) both;
+      }
+      @keyframes modalIn {
+        from {
+          opacity: 0;
+          transform: translateY(16px) scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .modal h2 {
+        margin: 0 0 16px;
+        font-size: 18px;
+        font-weight: 750;
+      }
+
+      /* ============================================================
+         Footer + Toast
+         ============================================================ */
+      .foot {
+        margin: 22px 0 10px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.02em;
+      }
+
+      #toast {
+        position: fixed;
+        left: 50%;
+        bottom: 26px;
+        transform: translateX(-50%);
+        z-index: 200;
+        max-width: calc(100% - 32px);
+        padding: 13px 20px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #1e293b, #0b1220);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 26px 60px -24px rgba(0, 0, 0, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        animation: toastIn 0.32s var(--ease) both;
+      }
+      @keyframes toastIn {
+        from {
+          opacity: 0;
+          transform: translateX(-50%) translateY(18px) scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0) scale(1);
+        }
+      }
+
+      /* ============================================================
+         Responsive
+         ============================================================ */
+      @media (max-width: 1100px) {
+        .span8,
+        .span7,
+        .span6,
+        .span5,
+        .span4 {
+          grid-column: span 12;
+        }
+      }
+
+      @media (max-width: 980px) {
+        .app {
+          grid-template-columns: 1fr;
+          gap: 14px;
+          padding: 12px;
+        }
+        .sidebar {
+          position: sticky;
+          top: 0;
+          z-index: 40;
+          max-height: none;
+          flex-direction: column;
+          gap: 10px;
+          padding: 12px;
+          border-radius: 20px;
+        }
+        .brand p {
+          display: none;
+        }
+        .brand .logo {
+          width: 38px;
+          height: 38px;
+          font-size: 17px;
+        }
+        .nav {
+          flex-direction: row;
+          overflow-x: auto;
+          gap: 6px;
+          padding-bottom: 2px;
+          scrollbar-width: none;
+        }
+        .nav::-webkit-scrollbar {
+          display: none;
+        }
+        .nav button {
+          width: auto;
+          font-size: 13px;
+          padding: 9px 13px;
+        }
+        .nav button.active::before {
+          display: none;
+        }
+        .sidebar-foot {
+          display: none;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .card {
+          padding: 16px;
+          border-radius: 20px;
+        }
+        .formgrid {
+          grid-template-columns: 1fr;
+        }
+        .formgrid .full {
+          grid-column: auto;
+        }
+        .filters select,
+        #dashboardDate,
+        #logFilterDate,
+        #logFilterAction {
+          max-width: 100%;
+          width: 100%;
+        }
+        .item {
+          flex-wrap: wrap;
+        }
+        .item .actions {
+          width: 100%;
+          justify-content: flex-end;
+        }
+        .timebig {
+          font-size: clamp(40px, 13vw, 60px);
+        }
+        .metric {
+          font-size: 26px;
+        }
+        .timerface {
+          padding: 22px 12px 18px;
+        }
+        .phase-row {
+          flex-wrap: wrap;
+        }
+        .phase-num {
+          max-width: 84px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- ===================== SIDEBAR ===================== -->
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">✦</div>
+          <div>
+            <h1>Life OS</h1>
+            <p>নিজের কাজ, সময় ও জীবনকে সহজভাবে পরিচালনা করো</p>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Main navigation">
+          <button class="active" data-page="dashboard">
+            <span class="nav-ico" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M3 10.6 12 3.5l9 7.1" />
+                <path d="M5.4 9.6V20.5h13.2V9.6" />
+                <path d="M9.8 20.5v-5.4h4.4v5.4" />
+              </svg>
+            </span>
+            <span class="nav-label">Today</span>
+          </button>
+          <button data-page="actions">
+            <span class="nav-ico" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="3.2" y="3.6" width="7.4" height="7.4" rx="2.2" />
+                <rect x="13.4" y="3.6" width="7.4" height="7.4" rx="2.2" />
+                <rect x="3.2" y="13.8" width="7.4" height="7.4" rx="2.2" />
+                <rect x="13.4" y="13.8" width="7.4" height="7.4" rx="2.2" />
+              </svg>
+            </span>
+            <span class="nav-label">Action Library</span>
+          </button>
+          <button data-page="tracking">
+            <span class="nav-ico" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12.6" r="8.2" />
+                <path d="M12 8.1v4.7l3.2 1.9" />
+                <path d="M9.4 3.1h5.2" />
+              </svg>
+            </span>
+            <span class="nav-label">Time Tracking</span>
+          </button>
+          <button data-page="review">
+            <span class="nav-ico" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M3.4 20.4h17.2" />
+                <path d="M6.6 20.4v-6.8" />
+                <path d="M11.2 20.4V6.2" />
+                <path d="M15.8 20.4v-9.6" />
+                <path d="M20.4 20.4V9.4" />
+              </svg>
+            </span>
+            <span class="nav-label">Weekly Review</span>
+          </button>
+          <button data-page="settings">
+            <span class="nav-ico" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="3.1" />
+                <path
+                  d="M19.1 14.4a1.6 1.6 0 0 0 .32 1.76l.06.06a1.9 1.9 0 1 1-2.7 2.7l-.06-.06a1.6 1.6 0 0 0-1.76-.32 1.6 1.6 0 0 0-.97 1.46v.17a1.9 1.9 0 1 1-3.8 0v-.09a1.6 1.6 0 0 0-1.05-1.46 1.6 1.6 0 0 0-1.76.32l-.06.06a1.9 1.9 0 1 1-2.7-2.7l.06-.06a1.6 1.6 0 0 0 .32-1.76 1.6 1.6 0 0 0-1.46-.97H3.3a1.9 1.9 0 1 1 0-3.8h.09A1.6 1.6 0 0 0 4.85 8.7a1.6 1.6 0 0 0-.32-1.76l-.06-.06a1.9 1.9 0 1 1 2.7-2.7l.06.06a1.6 1.6 0 0 0 1.76.32h.07a1.6 1.6 0 0 0 .97-1.46V3.3a1.9 1.9 0 1 1 3.8 0v.09a1.6 1.6 0 0 0 .97 1.46 1.6 1.6 0 0 0 1.76-.32l.06-.06a1.9 1.9 0 1 1 2.7 2.7l-.06.06a1.6 1.6 0 0 0-.32 1.76v.07a1.6 1.6 0 0 0 1.46.97h.17a1.9 1.9 0 1 1 0 3.8h-.09a1.6 1.6 0 0 0-1.46.97z"
+                />
+              </svg>
+            </span>
+            <span class="nav-label">Settings</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-foot">
+          <div class="tiny">
+            <strong style="color: var(--text)">Local-first</strong><br />
+            কোনো account, backend বা cloud sync নেই। ডেটা এই ব্রাউজারেই থাকে।
+          </div>
+        </div>
+      </aside>
+
+      <!-- ===================== MAIN ===================== -->
+      <div class="main">
+        <header class="topbar">
+          <span id="todayLabel" class="pill"></span>
+          <div class="topbar-actions">
+            <button class="ghost" id="themeToggle" type="button" title="Theme">
+              🌙
+            </button>
+            <button class="small" id="exportBtn">JSON Export</button>
+            <button class="small" id="importBtn">JSON Import</button>
+            <input
+              id="importFile"
+              type="file"
+              accept="application/json,.json"
+              class="hidden"
+            />
+          </div>
+        </header>
+
+        <main>
+          <!-- ============ DASHBOARD ============ -->
+          <section id="page-dashboard" class="page active">
+            <div class="grid">
+              <article class="card span8">
+                <div class="sectionhead">
+                  <div>
+                    <h2>আজকের Sessions</h2>
+                    <p class="muted tiny" style="margin: 3px 0 0">
+                      Schedule করা Action নিজে থেকেই এখানে আসবে
+                    </p>
+                  </div>
+                  <input id="dashboardDate" type="date" />
+                </div>
+                <div class="filters">
+                  <select id="taskFilterCategory">
+                    <option value="">সব Category</option>
+                  </select>
+                  <select id="taskGroup">
+                    <option value="action" selected>
+                      Action Library order অনুযায়ী
+                    </option>
+                    <option value="category">Category অনুযায়ী group</option>
+                    <option value="importance">
+                      Category importance অনুযায়ী
+                    </option>
+                    <option value="tag">Priority tag অনুযায়ী</option>
+                  </select>
+                </div>
+                <div id="todayTasks" class="list"></div>
+              </article>
+
+              <article class="card span4">
+                <h2>আজকের সারাংশ</h2>
+                <div class="stack">
+                  <div class="stat">
+                    <div class="stat-label">আজ রেকর্ড করা সময়</div>
+                    <div id="todayRecorded" class="metric">0m</div>
+                  </div>
+                  <div class="stat">
+                    <div class="stat-label">বাকি planned session</div>
+                    <div id="todayPlanned" class="metric">0m</div>
+                  </div>
+                  <div class="stat">
+                    <div class="stat-label">সম্পন্ন কাজ</div>
+                    <div id="todayCompletion" class="metric">0 / 0</div>
+                  </div>
+                  <div class="notice">
+                    Focus Mode স্বাধীনভাবে চলে; Action-এর সময় মাপতে Time
+                    Tracking ব্যবহার করো।
+                  </div>
+                </div>
+              </article>
+
+              <article class="card span6">
+                <div class="sectionhead">
+                  <div>
+                    <h2>Other Actions</h2>
+                    <p class="muted tiny" style="margin: 3px 0 0">
+                      আজকের Sessions-এ নেই এমন সক্রিয় Action — Add চাপলে শুধু
+                      আজকের তারিখে যোগ হবে
+                    </p>
+                  </div>
+                </div>
+                <div id="otherActions" class="list"></div>
+              </article>
+
+              <article class="card span6">
+                <h2>বর্তমান Time Tracking</h2>
+                <div id="trackingMini"></div>
+                <div class="row track-controls">
+                  <select id="startTrackingAction"></select>
+                  <button class="primary" id="startTrackingBtn">
+                    Start / Switch
+                  </button>
+                  <button id="stopTrackingBtn">Stop</button>
+                </div>
+              </article>
+
+              <article class="card span12">
+                <div class="sectionhead">
+                  <div>
+                    <h2>Focus Mode</h2>
+                    <div class="tiny">টাইম ট্র্যাকিং থেকে সম্পূর্ণ আলাদা</div>
+                  </div>
+                </div>
+
+                <div class="field focus-preset">
+                  <label for="focusPreset">Saved focus session</label>
+                  <select id="focusPreset"></select>
+                </div>
+
+                <div class="timerface">
+                  <div id="focusTimerName" class="timername">
+                    কোনো সেশন চালু নেই
+                  </div>
+                  <div id="focusTime" class="timebig">00:00</div>
+                  <div id="focusStatus" class="timerstatus muted">
+                    Session বেছে নিয়ে Start করো
+                  </div>
+                  <div class="row focus-controls">
+                    <button class="primary" id="focusStart">Start</button>
+                    <button id="focusPause">Pause</button>
+                    <button id="focusStop">Stop</button>
+                    <button id="focusNext">Next phase</button>
+                    <button id="focusPiPBtn" title="Mini floating timer">
+                      ⧉ Timer
+                    </button>
+                  </div>
+                </div>
+
+                <div id="focusAlert" class="notice hidden"></div>
+                <div id="dashboardPhaseEditor" class="stack"></div>
+
+                <div class="row focus-save">
+                  <button id="newFocusSession">+ New session</button>
+                  <button id="saveFocusSession" class="primary">
+                    Save session
+                  </button>
+                </div>
+
+                <div class="field hidden" id="focusNameWrap">
+                  <label for="dashboardFocusName">Session name</label>
+                  <input
+                    id="dashboardFocusName"
+                    placeholder="যেমন: Exercise 50 min + Break 10 min"
+                  />
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <!-- ============ ACTIONS ============ -->
+          <section id="page-actions" class="page">
+            <div class="grid">
+              <article class="card span5">
+                <h2 id="actionFormTitle">নতুন Action তৈরি</h2>
+                <form id="actionForm" class="stack">
+                  <input type="hidden" id="actionEditId" />
+                  <div class="field">
+                    <label for="actionName">Action-এর নাম</label>
+                    <input
+                      id="actionName"
+                      required
+                      placeholder="যেমন: English Practice"
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="actionEmoji">Emoji (ঐচ্ছিক)</label>
+                    <input id="actionEmoji" placeholder="যেমন: 📚" />
+                  </div>
+                  <div class="field">
+                    <label for="actionCategory">Category</label>
+                    <select id="actionCategory" required></select>
+                  </div>
+                  <div class="formgrid">
+                    <div class="field">
+                      <label>Daily Target</label>
+                      <div class="row" style="flex-wrap: nowrap">
+                        <input
+                          id="dailyHours"
+                          type="number"
+                          min="0"
+                          value="0"
+                          aria-label="Daily target hours"
+                        /><span class="muted tiny">ঘণ্টা</span>
+                        <input
+                          id="dailyMins"
+                          type="number"
+                          min="0"
+                          max="59"
+                          value="0"
+                          aria-label="Daily target minutes"
+                        /><span class="muted tiny">মিনিট</span>
+                      </div>
+                    </div>
+                    <div class="field">
+                      <label>Weekly Target</label>
+                      <div class="row" style="flex-wrap: nowrap">
+                        <input
+                          id="weeklyHours"
+                          type="number"
+                          min="0"
+                          value="0"
+                          aria-label="Weekly target hours"
+                        /><span class="muted tiny">ঘণ্টা</span>
+                        <input
+                          id="weeklyMins"
+                          type="number"
+                          min="0"
+                          max="59"
+                          value="0"
+                          aria-label="Weekly target minutes"
+                        /><span class="muted tiny">মিনিট</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Schedule to Today’s Sessions</label>
+                    <select id="scheduleType">
+                      <option value="none">No automatic schedule</option>
+                      <option value="daily">Every day</option>
+                      <option value="weekdays">Selected weekdays</option>
+                      <option value="weekly">Weekly on one day</option>
+                    </select>
+                  </div>
+                  <div id="scheduleDaysWrap" class="field hidden">
+                    <label>কোন কোন দিনে হবে</label>
+                    <div class="row schedule-days">
+                      <label class="checkboxrow"
+                        ><input type="checkbox" value="1" /> সোম</label
+                      ><label class="checkboxrow"
+                        ><input type="checkbox" value="2" /> মঙ্গল</label
+                      ><label class="checkboxrow"
+                        ><input type="checkbox" value="3" /> বুধ</label
+                      ><label class="checkboxrow"
+                        ><input type="checkbox" value="4" /> বৃহস্পতি</label
+                      ><label class="checkboxrow"
+                        ><input type="checkbox" value="5" /> শুক্র</label
+                      ><label class="checkboxrow"
+                        ><input type="checkbox" value="6" /> শনি</label
+                      ><label class="checkboxrow"
+                        ><input type="checkbox" value="0" /> রবি</label
+                      >
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label for="actionImportance">Action importance</label>
+                    <select id="actionImportance">
+                      <option value="high">High</option>
+                      <option value="medium" selected>Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="actionDescription">নোট (ঐচ্ছিক)</label>
+                    <textarea
+                      id="actionDescription"
+                      placeholder="কী করতে চাও"
+                    ></textarea>
+                  </div>
+                  <div class="row">
+                    <button class="primary" type="submit">Save Action</button>
+                    <button type="button" id="cancelActionEdit">Cancel</button>
+                  </div>
+                </form>
+
+                <hr
+                  style="
+                    border: 0;
+                    border-top: 1px solid var(--line);
+                    margin: 22px 0;
+                  "
+                />
+
+                <h2>Category / Life Domain</h2>
+                <form id="categoryForm" class="stack">
+                  <div class="field">
+                    <label for="categoryName">Category name</label>
+                    <input
+                      id="categoryName"
+                      required
+                      placeholder="যেমন: Foundation"
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="categoryImportance">Importance order</label>
+                    <select id="categoryImportance">
+                      <option value="1">1 — সবচেয়ে গুরুত্বপূর্ণ</option>
+                      <option value="2">2</option>
+                      <option value="3" selected>3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                      <option value="6">6</option>
+                    </select>
+                  </div>
+                  <button class="primary" type="submit">Add Category</button>
+                </form>
+              </article>
+
+              <article class="card span7">
+                <div class="sectionhead">
+                  <h2>তোমার Action Library</h2>
+                  <span id="weeklyBudgetBadge" class="pill"></span>
+                </div>
+                <div
+                  id="budgetNotice"
+                  class="notice"
+                  style="margin-bottom: 14px"
+                ></div>
+                <div id="actionList" class="list"></div>
+
+                <hr
+                  style="
+                    border: 0;
+                    border-top: 1px solid var(--line);
+                    margin: 22px 0;
+                  "
+                />
+
+                <h2>Categories</h2>
+                <div id="categoryList" class="list"></div>
+              </article>
+            </div>
+          </section>
+
+          <!-- ============ TRACKING ============ -->
+          <section id="page-tracking" class="page">
+            <div class="grid">
+              <article class="card span6">
+                <h2>Time Tracking Control</h2>
+                <div id="trackingCurrent"></div>
+                <div class="field" style="margin-top: 14px">
+                  <label for="trackingAction">Track this Action</label>
+                  <select id="trackingAction"></select>
+                </div>
+                <div class="row" style="margin-top: 12px">
+                  <button class="primary" id="trackingStart">
+                    Start / Switch Action
+                  </button>
+                  <button id="trackingStop">Stop</button>
+                </div>
+              </article>
+
+              <article class="card span6">
+                <h2>Manual Time Entry</h2>
+                <form id="manualForm" class="stack">
+                  <div class="field">
+                    <label for="manualAction">Action (ঐচ্ছিক)</label>
+                    <select id="manualAction"></select>
+                  </div>
+                  <div class="formgrid">
+                    <div class="field">
+                      <label for="manualDate">তারিখ</label>
+                      <input id="manualDate" type="date" required />
+                    </div>
+                    <div class="field">
+                      <label>সময়</label>
+                      <div class="row" style="flex-wrap: nowrap">
+                        <input
+                          id="manualHours"
+                          type="number"
+                          min="0"
+                          value="0"
+                          aria-label="Manual hours"
+                        /><span class="muted tiny">ঘণ্টা</span>
+                        <input
+                          id="manualMins"
+                          type="number"
+                          min="0"
+                          max="59"
+                          value="0"
+                          aria-label="Manual minutes"
+                        /><span class="muted tiny">মিনিট</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label for="manualNote">নোট</label>
+                    <input
+                      id="manualNote"
+                      placeholder="যেমন: সকালে Exercise করেছি"
+                    />
+                  </div>
+                  <button class="primary" type="submit">
+                    Save Manual Entry
+                  </button>
+                  <p class="tiny" style="margin: 0">
+                    এই সরল এন্ট্রি আনুমানিক duration হিসেবে সেভ হবে; নির্দিষ্ট
+                    start/end interval নয়।
+                  </p>
+                </form>
+              </article>
+
+              <article class="card span12">
+                <div class="sectionhead">
+                  <h2>Time Log History</h2>
+                  <button class="small danger" id="clearLogs">
+                    সব Log মুছুন
+                  </button>
+                </div>
+                <div class="row" style="margin-bottom: 12px">
+                  <input type="date" id="logFilterDate" />
+                  <select id="logFilterAction"></select>
+                  <button id="clearLogFilters">Clear filters</button>
+                </div>
+                <div
+                  id="logSummary"
+                  class="notice"
+                  style="margin-bottom: 14px"
+                ></div>
+                <div id="logTable" class="tablewrap"></div>
+              </article>
+            </div>
+          </section>
+
+          <!-- ============ REVIEW ============ -->
+          <section id="page-review" class="page">
+            <div class="grid">
+              <article class="card span12">
+                <div class="sectionhead">
+                  <h2>Weekly Review</h2>
+                  <div class="row">
+                    <button class="small" id="reviewPrev">
+                      &larr; Previous Week
+                    </button>
+                    <button class="small primary" id="reviewCurrent">
+                      Current Week
+                    </button>
+                    <button class="small" id="reviewNext">
+                      Next Week &rarr;
+                    </button>
+                  </div>
+                </div>
+                <div
+                  id="weekRange"
+                  class="muted"
+                  style="margin-bottom: 16px"
+                ></div>
+
+                <!-- Row 1 -->
+                <div class="grid">
+                  <div class="card span4">
+                    <div class="muted tiny">Weekly Action Target</div>
+                    <div class="metric" id="reviewTarget">0h</div>
+                    <div
+                      id="reviewTargetOver"
+                      class="tiny dangertext"
+                      style="margin-top: 4px; font-weight: 650"
+                    ></div>
+                  </div>
+                  <div class="card span4">
+                    <div class="muted tiny">Recorded Duration</div>
+                    <div class="metric" id="reviewRecorded">0h</div>
+                  </div>
+                  <div class="card span4">
+                    <div class="muted tiny">Untracked Time</div>
+                    <div
+                      class="metric"
+                      id="reviewUntracked"
+                      style="color: var(--amber)"
+                    >
+                      0m
+                    </div>
+                    <div class="tiny" style="margin-top: 4px">
+                      অতিবাহিত − রেকর্ডেড
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Row 2 -->
+                <div class="grid" style="margin-top: 14px">
+                  <div class="card span4">
+                    <div class="muted tiny">এই সপ্তাহে অতিবাহিত</div>
+                    <div class="metric" id="reviewElapsed">0m</div>
+                    <div class="tiny" style="margin-top: 4px">
+                      সপ্তাহ শুরুর 12:00 AM থেকে এখন পর্যন্ত
+                    </div>
+                  </div>
+                  <div class="card span4">
+                    <div class="muted tiny">এই সপ্তাহে বাকি</div>
+                    <div
+                      class="metric"
+                      id="reviewRemaining"
+                      style="color: var(--green)"
+                    >
+                      0m
+                    </div>
+                    <div class="tiny" style="margin-top: 4px">
+                      সপ্তাহ শেষ হওয়ার আগে বাকি
+                    </div>
+                  </div>
+                  <div class="card span4">
+                    <div class="muted tiny">Task completion</div>
+                    <div class="metric" id="reviewTasks">0 / 0</div>
+                  </div>
+                </div>
+
+                <h3 style="margin-top: 22px">Action-wise time</h3>
+                <div id="reviewActionTable" class="tablewrap"></div>
+
+                <h3 style="margin-top: 22px">Category overview</h3>
+                <div id="reviewCategoryTable" class="tablewrap"></div>
+
+                <div class="notice warn" style="margin-top: 16px">
+                  Duration-only manual entries রেকর্ড করা সময়ের যোগফলে থাকবে,
+                  কিন্তু এগুলো দিয়ে সপ্তাহের unique clock-time coverage বা
+                  untracked time সঠিকভাবে নির্ণয় করা যাবে না। এই সংস্করণ তাই
+                  untracked time-এর নির্ভুল দাবি করে না।
+                </div>
+
+                <div class="formgrid" style="margin-top: 18px">
+                  <div class="field">
+                    <label for="reviewGood">এই সপ্তাহে কী ভালো হয়েছে?</label>
+                    <textarea id="reviewGood" placeholder="ঐচ্ছিক"></textarea>
+                  </div>
+                  <div class="field">
+                    <label for="reviewChange"
+                      >পরের সপ্তাহে একটি ছোট পরিবর্তন</label
+                    >
+                    <textarea id="reviewChange" placeholder="ঐচ্ছিক"></textarea>
+                  </div>
+                </div>
+                <button
+                  class="primary"
+                  id="saveReview"
+                  style="margin-top: 12px"
+                >
+                  Save Weekly Review Notes
+                </button>
+              </article>
+            </div>
+          </section>
+
+          <!-- ============ SETTINGS ============ -->
+          <section id="page-settings" class="page">
+            <div class="grid">
+              <article class="card span6">
+                <h2>Settings</h2>
+                <div class="stack">
+                  <div class="field">
+                    <label for="weekStart">Week starts on</label>
+                    <select id="weekStart">
+                      <option value="1">Monday</option>
+                      <option value="0">Sunday</option>
+                      <option value="6">Saturday</option>
+                    </select>
+                  </div>
+                  <button class="primary" id="saveSettings">
+                    Save Settings
+                  </button>
+                </div>
+              </article>
+
+              <article class="card span6">
+                <h2>Backup &amp; Data</h2>
+                <div class="stack">
+                  <p class="muted tiny" style="margin: 0">
+                    ডেটা তোমার Firebase অ্যাকাউন্টে Cloud Sync হবে। নিরাপত্তার জন্য
+                    নিয়মিত JSON Export করে ব্যাকআপ রাখো।
+                  </p>
+                  <button id="settingsExport">
+                    Export full backup (.json)
+                  </button>
+                  <button id="settingsImport">Import backup (.json)</button>
+                  <button class="danger" id="resetApp">
+                    Reset all Life OS data
+                  </button>
+                  <div class="notice warn">
+                    Reset করলে এই ব্রাউজারের Life OS ডেটা মুছে যাবে। আগে Export
+                    করে রাখো।
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </main>
+
+        <footer class="foot">
+          Life OS • Firebase account • Cloud sync
+        </footer>
+      </div>
+    </div>
+
+    <!-- ===================== MODAL ===================== -->
+    <div id="modalOverlay" class="modal-overlay hidden">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modalTitle"
+      >
+        <h2 id="modalTitle">Session Edit</h2>
+        <div class="stack">
+          <div class="field">
+            <label for="sessName">Session name</label><input id="sessName" />
+          </div>
+          <div class="field">
+            <label>Planned duration</label>
+            <div class="row" style="flex-wrap: nowrap">
+              <input
+                id="sessHours"
+                type="number"
+                min="0"
+                value="0"
+                aria-label="Session hours"
+              /><span class="muted tiny">ঘণ্টা</span>
+              <input
+                id="sessMins"
+                type="number"
+                min="0"
+                max="59"
+                value="30"
+                aria-label="Session minutes"
+              /><span class="muted tiny">মিনিট</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="sessTag"
+              >Priority tag (ঐচ্ছিক — নিজের মতো লেখো, যেমন High, Study)</label
+            >
+            <input id="sessTag" placeholder="খালি রাখলে group-এ Untagged হবে" />
+          </div>
+          <div class="field">
+            <label for="sessNote">নোট (ঐচ্ছিক)</label><input id="sessNote" />
+          </div>
+          <p class="tiny" style="margin: 0">
+            এই পরিবর্তন শুধু নির্বাচিত তারিখের session-কে প্রভাবিত করবে;
+            Original Action বা অন্য তারিখের schedule বদলাবে না।
+          </p>
+        </div>
+        <div class="row" style="justify-content: flex-end; margin-top: 18px">
+          <button id="modalCancel">Cancel</button>
+          <button class="primary" id="modalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="logEditOverlay" class="modal-overlay hidden">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logEditTitle"
+      >
+        <h2 id="logEditTitle">Time Log Edit</h2>
+        <div class="stack">
+          <div class="field">
+            <label for="logEditAction">Action</label>
+            <select id="logEditAction"></select>
+          </div>
+          <div class="field">
+            <label for="logEditDate">তারিখ</label>
+            <input id="logEditDate" type="date" required />
+          </div>
+          <div class="field">
+            <label>সময়</label>
+            <div class="row" style="flex-wrap: nowrap">
+              <input
+                id="logEditHours"
+                type="number"
+                min="0"
+                value="0"
+                aria-label="Log hours"
+              />
+              <span class="muted tiny">ঘণ্টা</span>
+              <input
+                id="logEditMins"
+                type="number"
+                min="0"
+                max="59"
+                value="0"
+                aria-label="Log minutes"
+              />
+              <span class="muted tiny">মিনিট</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="logEditNote">নোট (ঐচ্ছিক)</label>
+            <input id="logEditNote" placeholder="যেমন: সকালে Exercise করেছি" />
+          </div>
+          <p class="tiny" style="margin: 0">
+            Edit করলে entry-টি Manual duration হিসেবে সেভ হবে (নির্দিষ্ট
+            start/end interval থাকবে না)।
+          </p>
+        </div>
+        <div class="row" style="justify-content: flex-end; margin-top: 18px">
+          <button id="logEditCancel">Cancel</button>
+          <button class="primary" id="logEditSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== LEGACY (hidden, kept for JS) ===================== -->
+    <div id="legacyFocusControls" class="hidden" aria-hidden="true">
+      <div id="focusMini"></div>
+      <button id="pauseFocusBtn" type="button"></button>
+      <select id="focusMode">
+        <option value="timer">Timer Only</option>
+        <option value="tracking">Tracking Only</option>
+        <option value="both">Timer + Tracking</option>
+      </select>
+      <select id="presetAction"></select>
+      <form id="presetForm">
+        <input id="presetEditId" /><input id="presetName" /><input
+          id="presetCountup"
+          type="checkbox"
+        /><input id="presetAlert" type="checkbox" />
+        <div id="phaseEditor"></div>
+        <button type="submit"></button>
+      </form>
+      <div id="presetFormTitle"></div>
+      <button id="addPhase" type="button"></button
+      ><button id="resetPresetForm" type="button"></button>
+      <button id="loadPreset" type="button"></button
+      ><button id="startPreset" type="button"></button
+      ><button id="deletePreset" type="button"></button>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite" class="hidden"></div>
+
+    <script>
+      (() => {
+        "use strict";
+        const STORAGE_KEY = "lifeOS.data.v1";
+        const SCHEMA_VERSION = 1;
+        const $ = (id) => document.getElementById(id);
+        const uid = (prefix) =>
+          prefix +
+          "_" +
+          Date.now().toString(36) +
+          "_" +
+          Math.random().toString(36).slice(2, 8);
+        const nowISO = () => new Date().toISOString();
+        const localDate = (d = new Date()) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const dateFromISO = (s) => {
+          const [y, m, d] = String(s).split("-").map(Number);
+          return new Date(y, m - 1, d, 12, 0, 0, 0);
+        };
+        const escapeHTML = (s) =>
+          String(s ?? "").replace(
+            /[&<>"']/g,
+            (c) =>
+              ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+              })[c],
+          );
+        const fmt = (sec) => {
+          sec = Math.max(0, Math.floor(sec));
+          const h = Math.floor(sec / 3600),
+            m = Math.floor((sec % 3600) / 60),
+            s = sec % 60;
+          return h
+            ? `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+            : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        };
+        const mins = (seconds) => `${Math.floor(seconds / 60)}m`;
+        const humanMinutes = (m) => {
+          m = Math.round(m || 0);
+          const h = Math.floor(m / 60),
+            r = m % 60;
+          return h ? `${h}h ${r}m` : `${r}m`;
+        };
+        const weekStartDate = (date, startDay) => {
+          const d = dateFromISO(date);
+          const diff = (d.getDay() - Number(startDay) + 7) % 7;
+          d.setDate(d.getDate() - diff);
+          return localDate(d);
+        };
+        const addDays = (date, n) => {
+          const d = dateFromISO(date);
+          d.setDate(d.getDate() + n);
+          return localDate(d);
+        };
+        const hmToMinutes = (h, m) =>
+          Math.max(
+            0,
+            Number(h || 0) * 60 + Math.min(59, Math.max(0, Number(m || 0))),
+          );
+        const seed = () => {
+          const cats = [
+            {
+              id: "cat_foundation",
+              name: "Foundation",
+              importance: 1,
+              archived: false,
+            },
+            {
+              id: "cat_responsibilities",
+              name: "Responsibilities",
+              importance: 2,
+              archived: false,
+            },
+            {
+              id: "cat_development",
+              name: "Long-term Development",
+              importance: 3,
+              archived: false,
+            },
+            {
+              id: "cat_relationships",
+              name: "Relationships & Social Life",
+              importance: 4,
+              archived: false,
+            },
+            {
+              id: "cat_memory",
+              name: "Memory & Self-understanding",
+              importance: 5,
+              archived: false,
+            },
+            {
+              id: "cat_management",
+              name: "Problem Solving & Life Management",
+              importance: 6,
+              archived: false,
+            },
+          ];
+          return {
+            schemaVersion: SCHEMA_VERSION,
+            categories: cats,
+            actions: [],
+            tasks: [],
+            logs: [],
+            presets: [],
+            reviews: {},
+            settings: { weekStart: 1 },
+            tracking: { activeActionId: null, segmentStart: null },
+            focus: {
+              presetId: null,
+              running: false,
+              paused: false,
+              startedAt: null,
+              pausedAt: null,
+              elapsedBeforePause: 0,
+              phaseIndex: 0,
+              phaseStartedAt: null,
+              phaseElapsedBeforePause: 0,
+              alerted: false,
+              mode: "both",
+              trackingActionId: null,
+            },
+          };
+        };
+        let state = loadState();
+        let toastTimer = null;
+        let editingTaskId = null;
+        let editingLogId = null;
+        let reviewOffset = 0;
+        let editingPresetId = null;
+        let pipWindow = null;
+        let lastReviewStart = "";
+        function loadState() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return seed();
+            const data = JSON.parse(raw);
+            if (
+              !data ||
+              typeof data !== "object" ||
+              !Array.isArray(data.actions) ||
+              !Array.isArray(data.categories)
+            )
+              return seed();
+            data.actions = (data.actions || []).map((a, i) => ({
+              ...a,
+              emoji: a.emoji || "",
+              order: Number.isFinite(Number(a.order)) ? Number(a.order) : i,
+              schedule: a.schedule || { type: "none", days: [] },
+            }));
+            data.tasks = (data.tasks || []).map((t) => ({
+              ...t,
+              tag: t.tag || "",
+              dismissed: !!t.dismissed,
+              source: t.source || "manual",
+            }));
+            return {
+              ...seed(),
+              ...data,
+              schemaVersion: SCHEMA_VERSION,
+              settings: { ...seed().settings, ...(data.settings || {}) },
+              tracking: { ...seed().tracking, ...(data.tracking || {}) },
+              focus: { ...seed().focus, ...(data.focus || {}) },
+              reviews: data.reviews || {},
+            };
+          } catch (e) {
+            console.warn("Could not load Life OS data", e);
+            return seed();
+          }
+        }
+        function persist() {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          } catch (e) {
+            notify("ডেটা সেভ করা যায়নি। Browser storage পূর্ণ কি না দেখো।");
+          }
+          try { window.lifeOSFirebase?.save(JSON.parse(JSON.stringify(state))); } catch (e) { console.warn("Cloud sync queue failed", e); }
+        }
+        function notify(msg) {
+          const el = $("toast");
+          el.textContent = msg;
+          el.classList.remove("hidden");
+          clearTimeout(toastTimer);
+          toastTimer = setTimeout(() => el.classList.add("hidden"), 2800);
+        }
+        function catById(id) {
+          return state.categories.find((c) => c.id === id);
+        }
+        function actionById(id) {
+          return state.actions.find((a) => a.id === id);
+        }
+        function presetById(id) {
+          return state.presets.find((p) => p.id === id);
+        }
+        function taskById(id) {
+          return state.tasks.find((t) => t.id === id);
+        }
+        function activeAction() {
+          return actionById(state.tracking.activeActionId);
+        }
+        function activePreset() {
+          return presetById(state.focus.presetId);
+        }
+        function activePhase() {
+          const p = activePreset();
+          return p && p.phases
+            ? p.phases[state.focus.phaseIndex] || null
+            : null;
+        }
+        function currentTrackingSeconds() {
+          if (!state.tracking.activeActionId || !state.tracking.segmentStart)
+            return 0;
+          return Math.max(
+            0,
+            (Date.now() - new Date(state.tracking.segmentStart).getTime()) /
+              1000,
+          );
+        }
+        function focusElapsed() {
+          const f = state.focus;
+          if (!f.running && !f.paused) return 0;
+          if (f.paused) return f.elapsedBeforePause || 0;
+          return (
+            (f.elapsedBeforePause || 0) +
+            Math.max(0, (Date.now() - new Date(f.startedAt).getTime()) / 1000)
+          );
+        }
+        function phaseElapsed() {
+          const f = state.focus;
+          if (!f.running && !f.paused) return 0;
+          if (f.paused) return f.phaseElapsedBeforePause || 0;
+          return (
+            (f.phaseElapsedBeforePause || 0) +
+            Math.max(
+              0,
+              (Date.now() - new Date(f.phaseStartedAt).getTime()) / 1000,
+            )
+          );
+        }
+        function fillSelect(el, items, placeholder, selected) {
+          el.innerHTML = "";
+          if (placeholder) {
+            const o = document.createElement("option");
+            o.value = "";
+            o.textContent = placeholder;
+            el.appendChild(o);
+          }
+          items.forEach((x) => {
+            const o = document.createElement("option");
+            o.value = x.id;
+            o.textContent = (x.emoji ? x.emoji + " " : "") + x.name;
+            el.appendChild(o);
+          });
+          if (selected) el.value = selected;
+        }
+        function activeCats() {
+          return state.categories
+            .filter((c) => !c.archived)
+            .sort((a, b) => a.importance - b.importance);
+        }
+        function activeActions() {
+          return state.actions
+            .filter((a) => !a.archived)
+            .sort(
+              (a, b) =>
+                (Number(a.order) || 0) - (Number(b.order) || 0) ||
+                a.name.localeCompare(b.name),
+            );
+        }
+        function categoryName(id) {
+          return catById(id)?.name || "Archived / deleted category";
+        }
+        function actionName(id) {
+          const a = actionById(id);
+          return a
+            ? (a.emoji ? a.emoji + " " : "") + a.name
+            : "Archived / deleted action";
+        }
+        function actionEmojiName(a) {
+          return a ? (a.emoji ? a.emoji + " " : "") + a.name : a?.name || "";
+        }
+        function getDayTasks(date) {
+          return state.tasks.filter((t) => t.date === date);
+        }
+        function sessionsForDate(date) {
+          return state.tasks.filter((t) => t.date === date && !t.dismissed);
+        }
+        function sessionExistsForAction(actionId, date) {
+          return state.tasks.some(
+            (t) => t.actionId === actionId && t.date === date,
+          );
+        }
+        function sessionForAction(actionId, date) {
+          return (
+            state.tasks.find(
+              (t) => t.actionId === actionId && t.date === date,
+            ) || null
+          );
+        }
+        function logsForDate(date) {
+          return state.logs.filter((l) => l.date === date);
+        }
+        function logSecondsForAction(
+          actionId,
+          startDate = null,
+          endDate = null,
+        ) {
+          return state.logs
+            .filter(
+              (l) =>
+                l.actionId === actionId &&
+                (!startDate || l.date >= startDate) &&
+                (!endDate || l.date <= endDate),
+            )
+            .reduce((s, l) => s + (Number(l.durationSeconds) || 0), 0);
+        }
+        function allWeeklyTargetMinutes() {
+          return activeActions().reduce(
+            (s, a) => s + (Number(a.weeklyTarget) || 0),
+            0,
+          );
+        }
+        function addLog({
+          actionId = null,
+          taskId = null,
+          startAt = null,
+          endAt = null,
+          durationSeconds = 0,
+          date = localDate(),
+          note = "",
+          kind = "tracked",
+          categoryId = null,
+          breakForActionId = null,
+        }) {
+          const a = actionById(actionId);
+          state.logs.push({
+            id: uid("log"),
+            actionId,
+            taskId,
+            categoryId: categoryId || a?.categoryId || null,
+            startAt,
+            endAt,
+            durationSeconds: Math.max(0, Number(durationSeconds) || 0),
+            date,
+            note,
+            kind,
+            breakForActionId,
+            createdAt: nowISO(),
+          });
+        }
+        function closeTrackingSegment(endAt = nowISO()) {
+          const t = state.tracking;
+          if (!t.activeActionId || !t.segmentStart) {
+            t.activeActionId = null;
+            t.segmentStart = null;
+            persist();
+            return;
+          }
+          const start = new Date(t.segmentStart),
+            end = new Date(endAt);
+          const actionId = t.activeActionId;
+          if (end > start) splitAndLogInterval(actionId, start, end, "tracked");
+          t.activeActionId = null;
+          t.segmentStart = null;
+          persist();
+        }
+        function splitAndLogInterval(
+          actionId,
+          start,
+          end,
+          kind = "tracked",
+          note = "",
+          taskId = null,
+          breakForActionId = null,
+        ) {
+          let cursor = new Date(start);
+          while (cursor < end) {
+            const date = localDate(cursor);
+            const nextMidnight = dateFromISO(addDays(date, 1));
+            nextMidnight.setHours(0, 0, 0, 0);
+            const stop = end < nextMidnight ? end : nextMidnight;
+            const seconds = (stop - cursor) / 1000;
+            addLog({
+              actionId,
+              taskId,
+              startAt: cursor.toISOString(),
+              endAt: stop.toISOString(),
+              durationSeconds: seconds,
+              date,
+              note,
+              kind,
+              breakForActionId,
+            });
+            cursor = new Date(stop);
+          }
+        }
+        function startTracking(actionId, opts = {}) {
+          if (!actionId) {
+            notify("আগে একটি Action বেছে নাও।");
+            return;
+          }
+          if (!actionById(actionId)) {
+            notify("এই Action পাওয়া যায়নি।");
+            return;
+          }
+          if (state.tracking.activeActionId === actionId) {
+            notify("এই Action ইতিমধ্যে track হচ্ছে।");
+            return;
+          }
+          closeTrackingSegment(nowISO());
+          state.tracking.activeActionId = actionId;
+          state.tracking.segmentStart = nowISO();
+          persist();
+          renderAll();
+          notify(actionName(actionId) + " tracking শুরু হয়েছে।");
+        }
+        function stopTracking() {
+          if (!state.tracking.activeActionId) {
+            notify("কোনো Action track হচ্ছে না।");
+            return;
+          }
+          closeTrackingSegment(nowISO());
+          renderAll();
+          notify("Time Tracking বন্ধ এবং সেভ হয়েছে।");
+        }
+        function switchPage(page) {
+          if (page === "focus") page = "dashboard";
+          document
+            .querySelectorAll(".nav button")
+            .forEach((b) =>
+              b.classList.toggle("active", b.dataset.page === page),
+            );
+          document
+            .querySelectorAll(".page")
+            .forEach((p) =>
+              p.classList.toggle("active", p.id === "page-" + page),
+            );
+          if (page === "focus") renderFocus();
+          if (page === "tracking") renderLogs();
+        }
+        function getSelectedDate() {
+          return $("dashboardDate").value || localDate();
+        }
+        function renderSelects() {
+          const cats = activeCats(),
+            acts = activeActions(),
+            presets = state.presets;
+          fillSelect($("actionCategory"), cats, "Category বেছে নাও");
+          if ($("taskFilterCategory")) {
+            const prev = $("taskFilterCategory").value;
+            fillSelect($("taskFilterCategory"), cats, "সব Category", prev);
+          }
+          fillSelect($("startTrackingAction"), acts, "Action বেছে নাও");
+          fillSelect($("trackingAction"), acts, "Action বেছে নাও");
+          fillSelect($("manualAction"), acts, "Action বেছে নাও (ঐচ্ছিক)");
+          fillSelect(
+            $("presetAction"),
+            acts,
+            "(Focus Timer আলাদা; tracking হবে না)",
+          );
+          fillSelect($("logFilterAction"), acts, "সব Action");
+          fillSelect(
+            $("focusPreset"),
+            presets,
+            "Saved session বেছে নাও",
+            state.focus.presetId,
+          );
+        }
+
+        function scheduleMatches(a, date) {
+          const s = a.schedule || { type: "none", days: [] };
+          const day = dateFromISO(date).getDay();
+          if (s.type === "daily") return true;
+          if (s.type === "weekdays" || s.type === "weekly")
+            return (s.days || []).includes(day);
+          return false;
+        }
+        function ensureScheduledTasks(date) {
+          // Idempotent: one session per action per date, regardless of completion status.
+          // A dismissed (removed) session still counts, so it never regenerates.
+          let changed = false;
+          activeActions().forEach((a) => {
+            if (
+              scheduleMatches(a, date) &&
+              !sessionExistsForAction(a.id, date)
+            ) {
+              state.tasks.push({
+                id: uid("task"),
+                actionId: a.id,
+                name: a.name,
+                categoryId: a.categoryId,
+                date,
+                plannedMinutes: Number(a.dailyTarget) || 0,
+                tag: "",
+                note: "",
+                status: "todo",
+                source: "schedule",
+                dismissed: false,
+                createdAt: nowISO(),
+              });
+              changed = true;
+            }
+          });
+          if (changed) persist();
+        }
+        function sessionItemHtml(t) {
+          const a = actionById(t.actionId);
+          const emoji = a?.emoji ? a.emoji + " " : "";
+
+          // Recorded = সব log যেগুলো এই action + এই date এর
+          let actual = state.logs
+            .filter((l) => l.actionId === t.actionId && l.date === t.date)
+            .reduce((s, l) => s + l.durationSeconds, 0);
+
+          // যদি এখন এই action ট্র্যাক হচ্ছে এবং সেগমেন্ট এই date-এ শুরু, live seconds যোগ
+          if (
+            state.tracking.activeActionId === t.actionId &&
+            state.tracking.segmentStart &&
+            localDate(new Date(state.tracking.segmentStart)) === t.date
+          ) {
+            actual += currentTrackingSeconds();
+          }
+
+          const tracking =
+            !!state.tracking.activeActionId &&
+            t.actionId === state.tracking.activeActionId;
+          return `<div class="item ${t.status === "done" ? "done" : ""}"><input aria-label="Mark complete" type="checkbox" data-task-done="${t.id}" ${t.status === "done" ? "checked" : ""}><div class="content"><strong>${escapeHTML(emoji + t.name)}${tracking ? ` <span class="pill green">Tracking &middot; ${fmt(currentTrackingSeconds())}</span>` : ""}${t.tag ? ` <span class="pill">${escapeHTML(t.tag)}</span>` : ""}</strong><div class="tiny">${escapeHTML(categoryName(t.categoryId))} &middot; Planned ${humanMinutes(t.plannedMinutes)} &middot; Recorded ${humanMinutes(actual / 60)}${t.note ? " &middot; " + escapeHTML(t.note) : ""}</div></div><div class="actions"><button class="small" data-task-track="${t.id}">Track</button><button class="small" data-task-edit="${t.id}">Edit</button><button class="small danger" data-task-remove="${t.id}">Remove</button></div></div>`;
+        }
+        function renderToday() {
+          const date = getSelectedDate();
+          ensureScheduledTasks(date);
+          $("todayLabel").textContent = new Date().toLocaleDateString("bn-BD", {
+            weekday: "short",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+          $("dashboardDate").value = date;
+          const fc = $("taskFilterCategory")?.value || "";
+          const group = $("taskGroup")?.value || "action";
+          const sessions = sessionsForDate(date).filter(
+            (t) => !fc || t.categoryId === fc,
+          );
+          const host = $("todayTasks");
+          if (!sessions.length)
+            host.innerHTML =
+              '<div class="empty">আজকের Sessions ফাঁকা। নিচের Other Actions প্যানেল থেকে Add করো।</div>';
+          else {
+            const keyOf =
+              group === "category"
+                ? (t) => categoryName(t.categoryId)
+                : group === "importance"
+                  ? (t) =>
+                      String(Number(catById(t.categoryId)?.importance) || 99)
+                  : group === "tag"
+                    ? (t) => t.tag || "Untagged"
+                    : null;
+            const sorted = sessions
+              .slice()
+              .sort(
+                keyOf
+                  ? (a, b) => String(keyOf(a)).localeCompare(String(keyOf(b)))
+                  : (a, b) =>
+                      (Number(actionById(a.actionId)?.order) || 0) -
+                        (Number(actionById(b.actionId)?.order) || 0) ||
+                      String(a.name).localeCompare(String(b.name)),
+              );
+            let html = "",
+              lastKey = null;
+            sorted.forEach((t) => {
+              if (keyOf) {
+                const k = String(keyOf(t));
+                if (k !== lastKey) {
+                  html += `<div class="grouphead">${escapeHTML(group === "importance" ? "Importance " + k : k)}</div>`;
+                  lastKey = k;
+                }
+              }
+              html += sessionItemHtml(t);
+            });
+            host.innerHTML = html;
+          }
+          const allSess = sessionsForDate(date);
+          const logs = logsForDate(date);
+          const recorded =
+            logs.reduce((s, l) => s + l.durationSeconds, 0) +
+            (state.tracking.segmentStart &&
+            localDate(new Date(state.tracking.segmentStart)) === date
+              ? currentTrackingSeconds()
+              : 0);
+          $("todayRecorded").textContent = humanMinutes(recorded / 60);
+          $("todayPlanned").textContent = humanMinutes(
+            allSess
+              .filter((t) => t.status !== "done")
+              .reduce((s, t) => s + (t.plannedMinutes || 0), 0),
+          );
+          $("todayCompletion").textContent =
+            `${allSess.filter((t) => t.status === "done").length} / ${allSess.length}`;
+          renderOtherActions(date);
+          renderTrackingMini();
+          renderFocusMini();
+        }
+        function renderOtherActions(date) {
+          const host = $("otherActions");
+          const present = new Set(sessionsForDate(date).map((t) => t.actionId));
+          const acts = activeActions().filter((a) => !present.has(a.id));
+          if (!acts.length) {
+            host.innerHTML =
+              '<div class="empty">সব সক্রিয় Action আজকের Sessions-এ আছে।</div>';
+            return;
+          }
+          host.innerHTML = acts
+            .map((a) => {
+              const dismissed = !!sessionForAction(a.id, date)?.dismissed;
+              return `<div class="item"><div class="content"><strong>${escapeHTML(actionEmojiName(a))}</strong><div class="tiny">${escapeHTML(categoryName(a.categoryId))} &middot; Daily ${humanMinutes(a.dailyTarget)}${dismissed ? " &middot; আগে সরানো হয়েছিল" : ""}</div></div><div class="actions"><button class="small primary" data-other-add="${a.id}">${dismissed ? "আবার যোগ" : "Add"}</button></div></div>`;
+            })
+            .join("");
+        }
+        function openSessionModal(taskId) {
+          const t = taskById(taskId);
+          if (!t) return;
+          editingTaskId = taskId;
+          $("modalTitle").textContent = "Session Edit — " + t.name;
+          const h = Math.floor((Number(t.plannedMinutes) || 0) / 60),
+            m = (Number(t.plannedMinutes) || 0) % 60;
+          $("sessName").value = t.name;
+          $("sessHours").value = h;
+          $("sessMins").value = m;
+          $("sessTag").value = t.tag || "";
+          $("sessNote").value = t.note || "";
+          $("modalOverlay").classList.remove("hidden");
+          setTimeout(() => $("sessName").focus(), 50);
+        }
+        function closeModal() {
+          $("modalOverlay").classList.add("hidden");
+          editingTaskId = null;
+        }
+        function openLogEditModal(logId) {
+          const l = state.logs.find((x) => x.id === logId);
+          if (!l) return;
+          editingLogId = logId;
+          $("logEditTitle").textContent = "Time Log Edit";
+
+          // Populate action dropdown
+          const acts = activeActions();
+          const sel = $("logEditAction");
+          sel.innerHTML = '<option value="">Action ছাড়া</option>';
+          acts.forEach((a) => {
+            const o = document.createElement("option");
+            o.value = a.id;
+            o.textContent = (a.emoji ? a.emoji + " " : "") + a.name;
+            sel.appendChild(o);
+          });
+
+          // If the log's action was archived/deleted, add a placeholder option
+          if (l.actionId && !acts.some((a) => a.id === l.actionId)) {
+            const o = document.createElement("option");
+            o.value = l.actionId;
+            o.textContent = actionName(l.actionId) + " (archived)";
+            sel.appendChild(o);
+          }
+          sel.value = l.actionId || "";
+
+          // Fill date
+          $("logEditDate").value = l.date || localDate();
+
+          // Fill hours + minutes separately
+          const totalMin = Math.round((Number(l.durationSeconds) || 0) / 60);
+          $("logEditHours").value = Math.floor(totalMin / 60);
+          $("logEditMins").value = totalMin % 60;
+
+          // Fill note
+          $("logEditNote").value = l.note || "";
+
+          $("logEditOverlay").classList.remove("hidden");
+          setTimeout(() => $("logEditHours").focus(), 50);
+        }
+
+        function closeLogEditModal() {
+          $("logEditOverlay").classList.add("hidden");
+          editingLogId = null;
+        }
+        function renderActions() {
+          const list = $("actionList"),
+            acts = activeActions(),
+            target = allWeeklyTargetMinutes();
+          $("weeklyBudgetBadge").textContent =
+            `Weekly plan: ${humanMinutes(target)} / 168h`;
+          $("budgetNotice").className =
+            "notice" + (target > 10080 ? " error" : "");
+          $("budgetNotice").textContent =
+            target > 10080
+              ? "সতর্কতা: Action Weekly Target-এর যোগফল ১৬৮ ঘণ্টা ছাড়িয়ে গেছে।"
+              : "Action-এর Weekly Target-এর যোগফল ১৬৮ ঘণ্টার মধ্যে থাকতে হবে। Category-এর নিজস্ব time budget নেই।";
+          if (!acts.length)
+            list.innerHTML =
+              '<div class="empty">এখনও কোনো Action নেই। বাম পাশ থেকে প্রথম Action তৈরি করো।</div>';
+          else
+            list.innerHTML = acts
+              .map((a) => {
+                const cat = catById(a.categoryId),
+                  weeklyActual = logSecondsForAction(
+                    a.id,
+                    weekStartDate(localDate(), state.settings.weekStart),
+                    addDays(
+                      weekStartDate(localDate(), state.settings.weekStart),
+                      6,
+                    ),
+                  );
+                return `<div class="item"><div class="content"><strong>${escapeHTML(actionEmojiName(a))}</strong><div class="tiny">${escapeHTML(cat?.name || "No category")} &middot; Daily ${humanMinutes(a.dailyTarget)} &middot; Weekly ${humanMinutes(a.weeklyTarget)} &middot; Actual this week ${humanMinutes(weeklyActual / 60)}</div>${a.description ? `<div class="tiny">${escapeHTML(a.description)}</div>` : ""}</div><div class="actions"><button class="small" data-action-up="${a.id}" aria-label="Move up">&uarr;</button><button class="small" data-action-down="${a.id}" aria-label="Move down">&darr;</button><details class="more-menu"><summary aria-label="More actions">&bull;&bull;&bull;</summary><div class="more-menu-pop"><button class="small" data-action-track="${a.id}">Track</button><button class="small" data-action-edit="${a.id}">Edit</button><button class="small danger" data-action-archive="${a.id}">Archive</button></div></details></div></div>`;
+              })
+              .join("");
+          const cList = $("categoryList"),
+            cats = activeCats();
+          cList.innerHTML =
+            cats
+              .map(
+                (c) =>
+                  `<div class="item"><div class="content"><strong>${escapeHTML(c.name)}</strong><div class="tiny">Importance rank: ${c.importance} &middot; ${state.actions.filter((a) => a.categoryId === c.id && !a.archived).length} Actions</div></div><div class="actions"><button class="small" data-category-edit="${c.id}">Edit</button><button class="small danger" data-category-archive="${c.id}">Archive</button></div></div>`,
+              )
+              .join("") || '<div class="empty">No categories</div>';
+        }
+        function renderTrackingMini() {
+          const a = activeAction(),
+            s = currentTrackingSeconds();
+          $("trackingMini").innerHTML = a
+            ? `<div class="row"><span class="pill green">Tracking</span><strong>${escapeHTML(actionEmojiName(a))}</strong></div><div class="metric" style="margin-top:10px">${fmt(s)}</div><div class="tiny">Segment started ${new Date(state.tracking.segmentStart).toLocaleTimeString()}</div>`
+            : '<div class="muted">এখন কোনো Action track হচ্ছে না।</div>';
+          $("trackingCurrent").innerHTML = a
+            ? `<div class="notice"><strong>${escapeHTML(actionEmojiName(a))}</strong> track হচ্ছে<br><span class="metric">${fmt(s)}</span><br><span class="tiny">শুরু: ${new Date(state.tracking.segmentStart).toLocaleString()}</span></div>`
+            : '<div class="empty">কোনো চলমান Time Tracking নেই।</div>';
+        }
+        function renderFocusMini() {
+          const f = state.focus,
+            p = activePreset(),
+            phase = activePhase();
+          if (p && (f.running || f.paused))
+            $("focusMini").innerHTML =
+              `<div class="row"><span class="pill ${f.paused ? "" : "green"}">${f.paused ? "Paused" : "Running"}</span><strong>${escapeHTML(p.name)}</strong></div><div class="metric">${fmt(Math.max(0, (phase?.minutes || 0) * 60 - phaseElapsed()))}</div><div class="tiny">${phase ? escapeHTML(phase.name) : "Session"} &middot; ${f.mode === "both" ? "Timer + Tracking" : f.mode === "timer" ? "Timer Only" : "Tracking Only"}</div>`;
+          else
+            $("focusMini").innerHTML =
+              '<div class="muted">কোনো Focus Session চলছে না।</div>';
+        }
+        async function openFocusPiP() {
+          if (!("documentPictureInPicture" in window)) {
+            notify(
+              "এই ব্রাউজারে PiP সাপোর্ট নেই। Chrome/Edge 116+ ব্যবহার করুন।",
+            );
+            return;
+          }
+          if (pipWindow) {
+            pipWindow.close();
+            return;
+          }
+          try {
+            pipWindow = await documentPictureInPicture.requestWindow({
+              width: 200,
+              height: 96,
+            });
+          } catch (e) {
+            notify("PiP খোলা যায়নি।");
+            return;
+          }
+
+          // Copy current page's stylesheets into the PiP window
+          [...document.styleSheets].forEach((sheet) => {
+            try {
+              const css = [...sheet.cssRules].map((r) => r.cssText).join("");
+              const style = pipWindow.document.createElement("style");
+              style.textContent = css;
+              pipWindow.document.head.appendChild(style);
+            } catch (e) {
+              if (sheet.href) {
+                const link = pipWindow.document.createElement("link");
+                link.rel = "stylesheet";
+                link.href = sheet.href;
+                pipWindow.document.head.appendChild(link);
+              }
+            }
+          });
+
+          // Minimal PiP styles — phase name on top, big timer below
+          const pipStyle = pipWindow.document.createElement("style");
+          pipStyle.textContent = `
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      place-items: center;
+      gap: 2px;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+      background: var(--panel, #0f1728);
+      color: var(--text, #e8eefb);
+      font-family: var(--font, system-ui, sans-serif);
+      cursor: grab;
+    }
+    body:active { cursor: grabbing; }
+    .pip-phase {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--muted, #8fa0bd);
+      letter-spacing: 0.02em;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      padding: 8px 8px 0;
+      line-height: 1;
+    }
+    .pip-timer {
+      font-size: 42px;
+      font-weight: 800;
+      letter-spacing: -0.045em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      background: linear-gradient(135deg, #4f46e5, #a855f7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      white-space: nowrap;
+      padding: 0 4px 6px;
+    }
+    .pip-timer.overtime {
+      background: linear-gradient(135deg, #f43f5e, #fb923c);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+    .pip-timer.paused { opacity: 0.5; }
+    .pip-phase.paused { opacity: 0.5; }
+  `;
+          pipWindow.document.head.appendChild(pipStyle);
+
+          // PiP DOM — phase name on top, timer below
+          pipWindow.document.body.innerHTML = `
+    <div class="pip-phase" id="pipPhase">—</div>
+    <div class="pip-timer" id="pipTime">00:00</div>
+  `;
+          pipWindow.document.title = "Focus";
+
+          // Cleanup when user closes PiP
+          pipWindow.addEventListener("pagehide", () => {
+            pipWindow = null;
+            updatePiPButtonLabel();
+            notify("PiP বন্ধ হয়েছে।");
+          });
+
+          updatePiPButtonLabel();
+          updatePiPContent();
+          notify("Mini timer চালু — সব অ্যাপের উপরে থাকবে।");
+        }
+
+        function updatePiPButtonLabel() {
+          const btn = $("focusPiPBtn");
+          if (!btn) return;
+          btn.textContent = pipWindow ? "✕ Exit PiP" : "⧉ PiP Mode";
+        }
+
+        function updatePiPContent() {
+          if (!pipWindow || pipWindow.closed) return;
+          const timeEl = pipWindow.document.getElementById("pipTime");
+          const phaseEl = pipWindow.document.getElementById("pipPhase");
+          if (!timeEl) return;
+
+          const f = state.focus;
+          const p = activePreset();
+          const phase = activePhase();
+          const elapsed = phaseElapsed();
+          const duration = (phase?.minutes || 0) * 60;
+          const over = duration > 0 && elapsed >= duration;
+          const allowOT = phase ? phase.countUp !== false : true;
+
+          // === Phase name ===
+          if (phaseEl) {
+            let label;
+            if (!p) label = "—";
+            else if (phase) {
+              const total = p.phases.length;
+              const idx = f.phaseIndex + 1;
+              label =
+                total > 1 ? `${idx}/${total} · ${phase.name}` : phase.name;
+            } else {
+              label = p.name;
+            }
+            phaseEl.textContent = label;
+            phaseEl.title = label;
+            phaseEl.classList.toggle("paused", f.paused);
+          }
+
+          // === Timer ===
+          let text;
+          if (!p) text = "00:00";
+          else if (over)
+            text = allowOT ? "+" + fmt(elapsed - duration) : "00:00";
+          else text = fmt(Math.max(0, duration - elapsed));
+
+          timeEl.textContent = text;
+          timeEl.classList.toggle("overtime", over && allowOT);
+          timeEl.classList.toggle("paused", f.paused);
+        }
+        function renderFocus() {
+          const f = state.focus,
+            p = activePreset(),
+            phase = activePhase(),
+            elapsed = phaseElapsed(),
+            duration = (phase?.minutes || 0) * 60,
+            over = duration > 0 && elapsed >= duration;
+          $("focusTimerName").textContent = p
+            ? `${p.name}${phase ? " — " + phase.name : ""}`
+            : "কোনো সেশন চালু নেই";
+          const allowOT = phase ? phase.countUp !== false : true;
+          let remaining = duration - elapsed;
+          $("focusTime").textContent = over
+            ? !allowOT
+              ? "সময় শেষ"
+              : "+" + fmt(elapsed - duration)
+            : fmt(Math.max(0, remaining));
+          $("focusTime").classList.toggle("overtime", over && allowOT);
+          $("focusStatus").textContent = !p
+            ? "একটি সেশন বেছে নাও অথবা নতুন সেশন তৈরি করো."
+            : f.paused
+              ? "Paused"
+              : f.running
+                ? over
+                  ? allowOT
+                    ? "Overtime চলছে — Next phase নিজে চাপো।"
+                    : "সময় শেষ — পরের phase-এ চলে যাচ্ছে..."
+                  : `চলছে · ${phase?.minutes || 0} মিনিট নির্ধারিত`
+                : "সেশন প্রস্তুত";
+          $("focusPause").textContent = f.paused ? "Resume" : "Pause";
+          $("focusNext").disabled =
+            !p || (!f.running && !f.paused) || !p.phases?.[f.phaseIndex + 1];
+          $("focusStart").disabled = !!(f.running || f.paused);
+          $("focusPause").disabled = !(f.running || f.paused);
+          $("focusStop").disabled = !(f.running || f.paused);
+          $("focusAlert").classList.toggle("hidden", !f.alerted);
+          if (f.alerted)
+            $("focusAlert").textContent =
+              `${phase?.name || "এই পর্যায়"}-এর নির্ধারিত সময় শেষ হয়েছে। তুমি চাইলে চালিয়ে যেতে পারো; পরের পর্যায় নিজে থেকে শুরু হবে না।`;
+          renderFocusMini();
+          updatePiPContent();
+        }
+        function renderLogs() {
+          const date = $("logFilterDate").value,
+            act = $("logFilterAction").value;
+          let logs = state.logs
+            .filter(
+              (l) => (!date || l.date === date) && (!act || l.actionId === act),
+            )
+            .slice()
+            .sort((a, b) =>
+              (b.startAt || b.createdAt || "").localeCompare(
+                a.startAt || a.createdAt || "",
+              ),
+            );
+          const seconds = logs.reduce((s, l) => s + l.durationSeconds, 0);
+          $("logSummary").textContent =
+            `${logs.length} entries · মোট ${humanMinutes(seconds / 60)}। Tracked interval ও duration-only manual entry আলাদা করে দেখানো হয়েছে।`;
+          $("logTable").innerHTML = logs.length
+            ? `<table><thead><tr><th>Date</th><th>Action</th><th>Duration</th><th>Type</th><th>Note</th><th></th></tr></thead><tbody>${logs.map((l) => `<tr><td>${escapeHTML(l.date)}</td><td>${escapeHTML(actionName(l.actionId))}</td><td>${humanMinutes(l.durationSeconds / 60)}</td><td>${l.kind === "manual" ? "Manual estimate" : "Tracked interval"}</td><td>${escapeHTML(l.note || "—")}</td><td><button class="small" data-log-edit="${l.id}">Edit</button><button class="small danger" data-log-delete="${l.id}">Delete</button></td></tr>`).join("")}</tbody></table>`
+            : '<div class="empty">এই ফিল্টারে কোনো Time Log নেই।';
+        }
+        function updateReviewTargetDisplay() {
+          const total = activeActions().reduce(
+            (s, x) => s + (Number(x.weeklyTarget) || 0),
+            0,
+          );
+          const el = $("reviewTarget");
+          const overEl = $("reviewTargetOver");
+          el.textContent = humanMinutes(total);
+
+          const over = total > 10080;
+          el.classList.toggle("danger", over);
+
+          if (over && overEl) {
+            const excessMin = total - 10080;
+            overEl.textContent = `⚠ ${humanMinutes(excessMin)} বেশি হয়েছে`;
+          } else if (overEl) {
+            overEl.textContent = "";
+          }
+
+          el.title = over
+            ? "⚠️ সাপ্তাহিক মোট টার্গেট ১৬৮ ঘণ্টা ছাড়িয়ে গেছে!"
+            : "";
+        }
+
+        function computeWeekTimeStats(startDateStr) {
+          const startD = dateFromISO(startDateStr);
+          startD.setHours(0, 0, 0, 0);
+          const endD = new Date(startD);
+          endD.setDate(endD.getDate() + 7);
+          const now = new Date();
+          const totalSec = 7 * 24 * 3600;
+          let elapsedSec, remainingSec;
+          if (now <= startD) {
+            elapsedSec = 0;
+            remainingSec = totalSec;
+          } else if (now >= endD) {
+            elapsedSec = totalSec;
+            remainingSec = 0;
+          } else {
+            elapsedSec = (now - startD) / 1000;
+            remainingSec = (endD - now) / 1000;
+          }
+          return { elapsedSec, remainingSec, totalSec };
+        }
+
+        function updateReviewLiveStats() {
+          const page = $("page-review");
+          if (!page || !page.classList.contains("active")) return;
+          if (reviewOffset !== 0) return;
+          const start = lastReviewStart;
+          if (!start) return;
+          const end = addDays(start, 6);
+          const stats = computeWeekTimeStats(start);
+          const logs = state.logs.filter(
+            (l) => l.date >= start && l.date <= end,
+          );
+          let actual = logs.reduce((s, l) => s + l.durationSeconds, 0);
+          if (state.tracking.segmentStart) {
+            const tDate = localDate(new Date(state.tracking.segmentStart));
+            if (tDate >= start && tDate <= end)
+              actual += currentTrackingSeconds();
+          }
+          const untrackedSec = Math.max(0, stats.elapsedSec - actual);
+          const e = $("reviewElapsed");
+          if (e) e.textContent = humanMinutes(stats.elapsedSec / 60);
+          const u = $("reviewUntracked");
+          if (u) u.textContent = humanMinutes(untrackedSec / 60);
+          const r = $("reviewRemaining");
+          if (r) r.textContent = humanMinutes(stats.remainingSec / 60);
+          const rec = $("reviewRecorded");
+          if (rec) rec.textContent = humanMinutes(actual / 60);
+        }
+        function renderReview() {
+          const start = addDays(
+              weekStartDate(localDate(), state.settings.weekStart),
+              reviewOffset * 7,
+            ),
+            end = addDays(start, 6);
+          lastReviewStart = start;
+          $("weekRange").innerHTML =
+            reviewOffset === 0
+              ? `<span class="pill green">Current week</span> ${start} থেকে ${end}`
+              : `${start} থেকে ${end}`;
+
+          const acts = activeActions(),
+            target = acts.reduce(
+              (s, a) => s + (Number(a.weeklyTarget) || 0),
+              0,
+            );
+          const logs = state.logs.filter(
+            (l) => l.date >= start && l.date <= end,
+          );
+          let actual = logs.reduce((s, l) => s + l.durationSeconds, 0);
+          if (state.tracking.segmentStart) {
+            const tDate = localDate(new Date(state.tracking.segmentStart));
+            if (tDate >= start && tDate <= end)
+              actual += currentTrackingSeconds();
+          }
+          const tasks = state.tasks.filter(
+            (t) => t.date >= start && t.date <= end,
+          );
+
+          // Top row
+          $("reviewTarget").textContent = humanMinutes(target);
+          $("reviewRecorded").textContent = humanMinutes(actual / 60);
+          $("reviewTasks").textContent =
+            `${tasks.filter((t) => t.status === "done").length} / ${tasks.length}`;
+
+          // New bottom row — week time stats
+          const stats = computeWeekTimeStats(start);
+          const untrackedSec = Math.max(0, stats.elapsedSec - actual);
+          $("reviewElapsed").textContent = humanMinutes(stats.elapsedSec / 60);
+          $("reviewUntracked").textContent = humanMinutes(untrackedSec / 60);
+          $("reviewRemaining").textContent = humanMinutes(
+            stats.remainingSec / 60,
+          );
+
+          // Action table
+          $("reviewActionTable").innerHTML =
+            `<table><thead><tr><th>Action</th><th>Weekly target</th><th>Recorded</th><th>Progress</th></tr></thead><tbody>${acts
+              .map((a) => {
+                const sec = logs
+                    .filter((l) => l.actionId === a.id)
+                    .reduce((s, l) => s + l.durationSeconds, 0),
+                  pct = a.weeklyTarget
+                    ? Math.round((sec / 60 / a.weeklyTarget) * 100)
+                    : 0;
+                return `<tr><td>${escapeHTML(actionEmojiName(a))}</td><td><div class="row" style="flex-wrap:nowrap;gap:5px"><input class="review-target-hours" type="number" min="0" value="${Math.floor((Number(a.weeklyTarget) || 0) / 60)}" data-action-id="${a.id}" style="width:64px;padding:5px 8px"><span class="muted tiny">ঘ</span><input class="review-target-mins" type="number" min="0" max="59" value="${(Number(a.weeklyTarget) || 0) % 60}" data-action-id="${a.id}" style="width:58px;padding:5px 8px"><span class="muted tiny">মি</span></div></td><td>${humanMinutes(sec / 60)}</td><td><div class="progress"><span style="width:${Math.min(100, pct)}%"></span></div><span class="tiny review-pct">${pct}%</span></td></tr>`;
+              })
+              .join("")}</tbody></table>`;
+
+          // Category table
+          $("reviewCategoryTable").innerHTML =
+            `<table><thead><tr><th>Category</th><th>Recorded</th><th>Actions</th></tr></thead><tbody>${activeCats()
+              .map((c) => {
+                const secs = logs
+                  .filter(
+                    (l) =>
+                      l.categoryId === c.id ||
+                      actionById(l.actionId)?.categoryId === c.id,
+                  )
+                  .reduce((s, l) => s + l.durationSeconds, 0);
+                return `<tr><td>${escapeHTML(c.name)}</td><td>${humanMinutes(secs / 60)}</td><td>${state.actions.filter((a) => a.categoryId === c.id && !a.archived).length}</td></tr>`;
+              })
+              .join("")}</tbody></table>`;
+
+          const r = state.reviews[start] || {};
+          $("reviewGood").value = r.good || "";
+          $("reviewChange").value = r.change || "";
+        }
+        function renderAll() {
+          renderSelects();
+          renderToday();
+          renderActions();
+          renderTrackingMini();
+          renderFocus();
+          renderLogs();
+          renderReview();
+          updateLiveNumbers();
+        }
+        function resetActionForm() {
+          $("actionEditId").value = "";
+          $("actionFormTitle").textContent = "নতুন Action তৈরি";
+          $("actionForm").reset();
+          $("dailyHours").value = 0;
+          $("dailyMins").value = 0;
+          $("weeklyHours").value = 0;
+          $("weeklyMins").value = 0;
+          $("scheduleType").value = "none";
+          document
+            .querySelectorAll(".schedule-days input")
+            .forEach((x) => (x.checked = false));
+          $("scheduleDaysWrap").classList.add("hidden");
+        }
+        function resetPresetForm() {
+          $("presetEditId").value = "";
+          $("presetFormTitle").textContent = "নতুন Focus Session";
+          $("presetForm").reset();
+          $("presetCountup").checked = true;
+          $("presetAlert").checked = true;
+          $("phaseEditor").innerHTML = "";
+          addPhaseRow("Work", 25);
+        }
+        function addPhaseRow(name = "", minutes = 25) {
+          const h = Math.floor(minutes / 60),
+            m = minutes % 60;
+          const wrap = document.createElement("div");
+          wrap.className = "item phase-row";
+          wrap.innerHTML = `<div class="content"><div class="formgrid"><div class="field"><label>Phase name</label><input class="phase-name" required value="${escapeHTML(name)}" placeholder="যেমন Work / Break"></div><div class="field"><label>Duration</label><div class="row" style="flex-wrap:nowrap"><input class="phase-hours" required type="number" min="0" value="${h}" aria-label="Phase hours"><span class="muted tiny">ঘণ্টা</span><input class="phase-mins" required type="number" min="0" max="59" value="${m}" aria-label="Phase minutes"><span class="muted tiny">মিনিট</span></div></div></div><label class="checkboxrow tiny" style="margin-top:7px"><input type="checkbox" class="phase-countup" checked> এই পর্যায়ে Count Up অনুমোদিত</label></div><button type="button" class="small danger remove-phase">Remove</button>`;
+          wrap.querySelector(".remove-phase").addEventListener("click", () => {
+            wrap.remove();
+            if (!$("phaseEditor").children.length) addPhaseRow("Work", 25);
+          });
+          $("phaseEditor").appendChild(wrap);
+        }
+        function phaseHM(row) {
+          return Math.max(
+            1,
+            Number(row.querySelector(".phase-hours")?.value || 0) * 60 +
+              Math.min(
+                59,
+                Math.max(
+                  0,
+                  Number(row.querySelector(".phase-mins")?.value || 0),
+                ),
+              ) || 1,
+          );
+        }
+        function collectPhases() {
+          return [...document.querySelectorAll("#phaseEditor .phase-row")].map(
+            (r) => ({
+              name: r.querySelector(".phase-name").value.trim() || "Phase",
+              minutes: phaseHM(r),
+              countUp: r.querySelector(".phase-countup").checked,
+            }),
+          );
+        }
+        function startFocus(presetId, mode = "timer") {
+          const p = presetById(presetId);
+          if (!p) {
+            notify("আগে একটি Saved Session বেছে নাও।");
+            return;
+          }
+          if (state.focus.running || state.focus.paused) {
+            notify("আগের Focus Session আগে Stop করো।");
+            return;
+          }
+          state.focus = {
+            ...seed().focus,
+            presetId: p.id,
+            running: true,
+            paused: false,
+            startedAt: nowISO(),
+            phaseStartedAt: nowISO(),
+            elapsedBeforePause: 0,
+            phaseElapsedBeforePause: 0,
+            phaseIndex: 0,
+            alerted: false,
+            mode: mode || "both",
+            trackingActionId: (mode || "both") !== "timer" ? p.actionId : null,
+          };
+          if (state.focus.trackingActionId)
+            startTracking(state.focus.trackingActionId);
+          persist();
+          renderAll();
+          switchPage("focus");
+          notify("Focus Session শুরু হয়েছে।");
+        }
+        function pauseFocus() {
+          const f = state.focus;
+          if (!f.running && !f.paused) return;
+          if (f.running) {
+            f.elapsedBeforePause = focusElapsed();
+            f.phaseElapsedBeforePause = phaseElapsed();
+            f.pausedAt = nowISO();
+            f.running = false;
+            f.paused = true;
+            if (f.mode === "both" && state.tracking.activeActionId)
+              closeTrackingSegment(nowISO());
+          } else {
+            f.startedAt = nowISO();
+            f.phaseStartedAt = nowISO();
+            f.running = true;
+            f.paused = false;
+            f.pausedAt = null;
+          }
+          persist();
+          renderAll();
+        }
+        function stopFocus() {
+          const f = state.focus;
+          if (!f.running && !f.paused) return;
+          if (f.mode !== "timer" && state.tracking.activeActionId)
+            closeTrackingSegment(nowISO());
+          state.focus = { ...seed().focus };
+          persist();
+          renderAll();
+          notify("Focus Session বন্ধ হয়েছে।");
+        }
+        function nextPhase() {
+          const f = state.focus,
+            p = activePreset();
+          if (!p || f.phaseIndex >= p.phases.length - 1) return;
+          const nextIndex = f.phaseIndex + 1;
+          if (f.mode !== "timer" && state.tracking.activeActionId)
+            closeTrackingSegment(nowISO());
+          f.phaseIndex = nextIndex;
+          f.phaseStartedAt = nowISO();
+          f.phaseElapsedBeforePause = 0;
+          f.alerted = false;
+          const phase = p.phases[nextIndex];
+          if (f.mode !== "timer") {
+            const nextAction = phase.actionId || f.trackingActionId;
+            if (nextAction) {
+              f.trackingActionId = nextAction;
+              startTracking(nextAction);
+            }
+          }
+          persist();
+          renderAll();
+          notify("পরের পর্যায় শুরু হয়েছে।");
+        }
+        function checkFocusAlarm() {
+          const f = state.focus;
+          if (!f.running) return;
+          const phase = activePhase();
+          if (!phase) return;
+          if (
+            phaseElapsed() >= (Number(phase.minutes) || 0) * 60 &&
+            !f.alerted
+          ) {
+            f.alerted = true;
+            persist();
+            renderFocus();
+            if (activePreset()?.alert) {
+              try {
+                if (
+                  "Notification" in window &&
+                  Notification.permission === "granted"
+                )
+                  new Notification("Focus Timer", {
+                    body: `${activePreset().name}: ${phase.name} সময় শেষ।`,
+                  });
+                else {
+                  beep();
+                }
+              } catch (e) {
+                beep();
+              }
+            }
+          }
+        }
+        function beep() {
+          try {
+            const C = window.AudioContext || window.webkitAudioContext;
+            if (!C) return;
+            const c = new C(),
+              o = c.createOscillator(),
+              g = c.createGain();
+            o.connect(g);
+            g.connect(c.destination);
+            o.frequency.value = 880;
+            g.gain.value = 0.08;
+            o.start();
+            setTimeout(() => {
+              o.stop();
+              c.close();
+            }, 220);
+          } catch (e) {}
+        }
+        function playNotificationSound() {
+          try {
+            const C = window.AudioContext || window.webkitAudioContext;
+            if (!C) return;
+            const c = new C();
+            const t0 = c.currentTime;
+            // 3-tone premium chime: A5 → C#6 → E6
+            const notes = [
+              { f: 880.0, t: 0.0, d: 0.2 },
+              { f: 1108.7, t: 0.22, d: 0.2 },
+              { f: 1318.5, t: 0.44, d: 0.45 },
+            ];
+            notes.forEach((n) => {
+              const o = c.createOscillator();
+              const g = c.createGain();
+              o.type = "sine";
+              o.frequency.value = n.f;
+              o.connect(g);
+              g.connect(c.destination);
+              g.gain.setValueAtTime(0.0001, t0 + n.t);
+              g.gain.exponentialRampToValueAtTime(0.18, t0 + n.t + 0.02);
+              g.gain.exponentialRampToValueAtTime(0.0001, t0 + n.t + n.d);
+              o.start(t0 + n.t);
+              o.stop(t0 + n.t + n.d + 0.05);
+            });
+            setTimeout(() => {
+              try {
+                c.close();
+              } catch (e) {}
+            }, 1400);
+          } catch (e) {}
+        }
+        function downloadBackup() {
+          const blob = new Blob(
+            [JSON.stringify({ ...state, exportedAt: nowISO() }, null, 2)],
+            { type: "application/json" },
+          );
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `life-os-backup-${localDate()}.json`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+          notify("JSON backup তৈরি হয়েছে।");
+        }
+        function importBackup(file) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const d = JSON.parse(reader.result);
+              if (
+                !d ||
+                !Array.isArray(d.actions) ||
+                !Array.isArray(d.categories) ||
+                !Array.isArray(d.logs) ||
+                !Array.isArray(d.presets)
+              )
+                throw new Error("invalid");
+              if (
+                !confirm(
+                  "Import করলে বর্তমান Life OS ডেটা প্রতিস্থাপিত হবে। আগে Export করা আছে? চালিয়ে যাবে?",
+                )
+              )
+                return;
+              state = {
+                ...seed(),
+                ...d,
+                schemaVersion: SCHEMA_VERSION,
+                settings: { ...seed().settings, ...(d.settings || {}) },
+                tracking: { ...seed().tracking, ...(d.tracking || {}) },
+                focus: { ...seed().focus, ...(d.focus || {}) },
+              };
+              state.actions = state.actions.map((a, i) => ({
+                ...a,
+                emoji: a.emoji || "",
+                order: Number.isFinite(Number(a.order)) ? Number(a.order) : i,
+              }));
+              state.tasks = state.tasks.map((t) => ({
+                ...t,
+                tag: t.tag || "",
+                dismissed: !!t.dismissed,
+              }));
+              persist();
+              renderAll();
+              notify("Backup import হয়েছে।");
+            } catch (e) {
+              alert(
+                "এই JSON backup সঠিক Life OS backup নয় বা ফাইলটি ক্ষতিগ্রস্ত। বর্তমান ডেটা অপরিবর্তিত রাখা হয়েছে।",
+              );
+            }
+          };
+          reader.readAsText(file);
+        }
+        function syncThemeButton() {
+          const b = $("themeToggle");
+          if (!b) return;
+          const dark =
+            document.documentElement.getAttribute("data-theme") === "dark";
+          b.textContent = dark ? "☀️" : "🌙";
+          b.title = dark ? "Light mode" : "Dark mode";
+        }
+        function bindEvents() {
+          $("taskFilterCategory").addEventListener("change", renderToday);
+          $("taskGroup").addEventListener("change", renderToday);
+          $("scheduleType").addEventListener("change", () => {
+            $("scheduleDaysWrap").classList.toggle(
+              "hidden",
+              !["weekdays", "weekly"].includes($("scheduleType").value),
+            );
+            if (
+              $("scheduleType").value === "weekly" &&
+              !document.querySelector(".schedule-days input:checked")
+            ) {
+              const d = new Date().getDay();
+              const cb = document.querySelector(
+                '.schedule-days input[value="' + d + '"]',
+              );
+              if (cb) cb.checked = true;
+            }
+          });
+          document
+            .querySelectorAll(".nav button")
+            .forEach((b) =>
+              b.addEventListener("click", () => switchPage(b.dataset.page)),
+            );
+          document
+            .querySelectorAll("[data-goto]")
+            .forEach((b) =>
+              b.addEventListener("click", () => switchPage(b.dataset.goto)),
+            );
+          $("dashboardDate").value = localDate();
+          $("manualDate").value = localDate();
+          $("dashboardDate").addEventListener("change", renderToday);
+          $("otherActions").addEventListener("click", (e) => {
+            const b = e.target.closest("[data-other-add]");
+            if (!b) return;
+            const a = actionById(b.dataset.otherAdd);
+            if (!a) return;
+            const date = getSelectedDate();
+            const existing = sessionForAction(a.id, date);
+            if (existing) {
+              if (existing.dismissed) {
+                existing.dismissed = false;
+                persist();
+                renderAll();
+                notify("Session আবার আজকের তালিকায় যোগ হয়েছে।");
+              } else
+                notify(
+                  "এই Action-এর session আজকের তালিকায় আছেই — duplicate তৈরি হবে না।",
+                );
+              return;
+            }
+            state.tasks.push({
+              id: uid("task"),
+              actionId: a.id,
+              categoryId: a.categoryId,
+              name: a.name,
+              date,
+              plannedMinutes: Number(a.dailyTarget) || 0,
+              tag: "",
+              note: "",
+              status: "todo",
+              source: "manual",
+              dismissed: false,
+              createdAt: nowISO(),
+            });
+            persist();
+            renderAll();
+            notify("আজকের Sessions-এ যোগ হয়েছে (শুধু এই তারিখের জন্য)।");
+          });
+          $("todayTasks").addEventListener("change", (e) => {
+            const id = e.target.dataset.taskDone;
+            if (!id) return;
+            const t = taskById(id);
+            if (t) {
+              t.status = e.target.checked ? "done" : "todo";
+              t.completedAt = e.target.checked ? nowISO() : null;
+              persist();
+              renderAll();
+            }
+          });
+          $("todayTasks").addEventListener("click", (e) => {
+            const b = e.target.closest("button");
+            if (!b) return;
+            if (b.dataset.taskTrack) {
+              const t = taskById(b.dataset.taskTrack);
+              if (t) startTracking(t.actionId);
+            }
+            if (b.dataset.taskEdit) {
+              openSessionModal(b.dataset.taskEdit);
+            }
+            if (b.dataset.taskRemove) {
+              const t = taskById(b.dataset.taskRemove);
+              if (!t) return;
+              if (
+                confirm(
+                  `"${t.name}"-কে আজকের Sessions থেকে সরাবে? এতে Original Action, তার schedule বা অন্য তারিখের session কোনোটিই বদলাবে না। Time Logs থাকবে।`,
+                )
+              ) {
+                if (t.source === "schedule") {
+                  t.dismissed = true;
+                } else {
+                  state.tasks = state.tasks.filter((x) => x.id !== t.id);
+                }
+                persist();
+                renderAll();
+              }
+            }
+          });
+          $("modalCancel").addEventListener("click", closeModal);
+          $("modalOverlay").addEventListener("click", (e) => {
+            if (e.target === $("modalOverlay")) closeModal();
+          });
+          $("modalSave").addEventListener("click", () => {
+            const t = taskById(editingTaskId);
+            if (!t) {
+              closeModal();
+              return;
+            }
+            const name = $("sessName").value.trim();
+            if (!name) {
+              notify("Session name দরকার।");
+              return;
+            }
+            t.name = name;
+            t.plannedMinutes = hmToMinutes(
+              $("sessHours").value,
+              $("sessMins").value,
+            );
+            t.tag = $("sessTag").value.trim();
+            t.note = $("sessNote").value.trim();
+            persist();
+            closeModal();
+            renderAll();
+            notify(
+              "Session সেভ হয়েছে — শুধু এই তারিখের session পরিবর্তিত হয়েছে।",
+            );
+          });
+          $("logEditCancel").addEventListener("click", closeLogEditModal);
+          $("logEditOverlay").addEventListener("click", (e) => {
+            if (e.target === $("logEditOverlay")) closeLogEditModal();
+          });
+
+          $("logEditSave").addEventListener("click", () => {
+            const l = state.logs.find((x) => x.id === editingLogId);
+            if (!l) {
+              closeLogEditModal();
+              return;
+            }
+
+            const date = $("logEditDate").value;
+            const actionId = $("logEditAction").value || null;
+            const hours = Math.max(0, Number($("logEditHours").value) || 0);
+            const mins = Math.min(
+              59,
+              Math.max(0, Number($("logEditMins").value) || 0),
+            );
+            const totalMinutes = hours * 60 + mins;
+            const note = $("logEditNote").value.trim();
+
+            if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+              notify("তারিখ সঠিক নয়।");
+              return;
+            }
+            if (totalMinutes < 1) {
+              notify("কমপক্ষে ১ মিনিট সময় দাও।");
+              return;
+            }
+
+            // Update the log entry
+            l.date = date;
+            l.actionId = actionId;
+            l.categoryId = actionId
+              ? actionById(actionId)?.categoryId || null
+              : null;
+            l.durationSeconds = totalMinutes * 60;
+            l.note = note;
+
+            // Once edited, always treat as manual duration
+            if (l.kind === "tracked") {
+              l.kind = "manual";
+              l.startAt = null;
+              l.endAt = null;
+            }
+            l.updatedAt = nowISO();
+
+            persist();
+            closeLogEditModal();
+            renderAll();
+            notify("Time Log আপডেট হয়েছে।");
+          });
+          $("startTrackingBtn").addEventListener("click", () =>
+            startTracking($("startTrackingAction").value),
+          );
+          $("stopTrackingBtn").addEventListener("click", stopTracking);
+          $("trackingStart").addEventListener("click", () =>
+            startTracking($("trackingAction").value),
+          );
+          $("trackingStop").addEventListener("click", stopTracking);
+          $("actionForm").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const id = $("actionEditId").value;
+            const name = $("actionName").value.trim(),
+              categoryId = $("actionCategory").value;
+            if (!name || !categoryId) {
+              notify("Action name ও Category দরকার।");
+              return;
+            }
+            const item = {
+              id: id || uid("action"),
+              name,
+              categoryId,
+              dailyTarget: hmToMinutes(
+                $("dailyHours").value,
+                $("dailyMins").value,
+              ),
+              weeklyTarget: hmToMinutes(
+                $("weeklyHours").value,
+                $("weeklyMins").value,
+              ),
+              schedule: {
+                type: $("scheduleType").value,
+                days: [
+                  ...document.querySelectorAll(".schedule-days input:checked"),
+                ].map((x) => Number(x.value)),
+              },
+              importance: $("actionImportance").value,
+              emoji: $("actionEmoji").value.trim(),
+              description: $("actionDescription").value.trim(),
+              archived: false,
+              updatedAt: nowISO(),
+            };
+            if (id) {
+              const i = state.actions.findIndex((a) => a.id === id);
+              if (i >= 0) state.actions[i] = { ...state.actions[i], ...item };
+            } else
+              state.actions.push({
+                ...item,
+                order: state.actions.length,
+                createdAt: nowISO(),
+              });
+            persist();
+            resetActionForm();
+            renderAll();
+            notify("Action সেভ হয়েছে।");
+          });
+          $("cancelActionEdit").addEventListener("click", resetActionForm);
+          $("categoryForm").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const name = $("categoryName").value.trim();
+            if (!name) return;
+            state.categories.push({
+              id: uid("cat"),
+              name,
+              importance: Number($("categoryImportance").value) || 3,
+              archived: false,
+            });
+            $("categoryForm").reset();
+            persist();
+            renderAll();
+            notify("Category যোগ হয়েছে।");
+          });
+          $("actionList").addEventListener("click", (e) => {
+            const b = e.target.closest("button");
+            if (!b) return;
+            const parentMenu = b.closest("details.more-menu");
+            if (parentMenu) parentMenu.removeAttribute("open");
+            if (b.dataset.actionTrack) startTracking(b.dataset.actionTrack);
+            if (b.dataset.actionUp || b.dataset.actionDown) {
+              const id = b.dataset.actionUp || b.dataset.actionDown;
+              const arr = activeActions();
+              const i = arr.findIndex((a) => a.id === id),
+                j = i + (b.dataset.actionUp ? -1 : 1);
+              if (i >= 0 && j >= 0 && j < arr.length) {
+                const x = arr[i],
+                  y = arr[j],
+                  tmp = x.order;
+                x.order = y.order;
+                y.order = tmp;
+                persist();
+                renderAll();
+              }
+            }
+            if (b.dataset.actionEdit) {
+              const a = actionById(b.dataset.actionEdit);
+              if (!a) return;
+              $("actionEditId").value = a.id;
+              $("actionFormTitle").textContent = "Action Edit";
+              $("actionName").value = a.name;
+              $("actionEmoji").value = a.emoji || "";
+              $("actionCategory").value = a.categoryId;
+              $("dailyHours").value = Math.floor(
+                (Number(a.dailyTarget) || 0) / 60,
+              );
+              $("dailyMins").value = (Number(a.dailyTarget) || 0) % 60;
+              $("weeklyHours").value = Math.floor(
+                (Number(a.weeklyTarget) || 0) / 60,
+              );
+              $("weeklyMins").value = (Number(a.weeklyTarget) || 0) % 60;
+              $("scheduleType").value = a.schedule?.type || "none";
+              document
+                .querySelectorAll(".schedule-days input")
+                .forEach(
+                  (x) =>
+                    (x.checked = (a.schedule?.days || []).includes(
+                      Number(x.value),
+                    )),
+                );
+              $("scheduleDaysWrap").classList.toggle(
+                "hidden",
+                !["weekdays", "weekly"].includes($("scheduleType").value),
+              );
+              $("actionImportance").value = a.importance;
+              $("actionDescription").value = a.description || "";
+              switchPage("actions");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }
+            if (b.dataset.actionArchive) {
+              const a = actionById(b.dataset.actionArchive);
+              if (!a) return;
+              if (confirm(`"${a.name}" archive করবে? পুরোনো log থাকবে।`)) {
+                a.archived = true;
+                if (state.tracking.activeActionId === a.id) stopTracking();
+                persist();
+                renderAll();
+              }
+            }
+          });
+          $("categoryList").addEventListener("click", (e) => {
+            const b = e.target.closest("button");
+            if (!b) return;
+            const c = catById(
+              b.dataset.categoryEdit || b.dataset.categoryArchive,
+            );
+            if (!c) return;
+            if (b.dataset.categoryEdit) {
+              const n = prompt("Category name:", c.name);
+              if (n && n.trim()) c.name = n.trim();
+              const rank = prompt(
+                "Importance rank (1 = highest):",
+                c.importance,
+              );
+              if (rank && Number(rank) >= 1 && Number(rank) <= 6)
+                c.importance = Number(rank);
+              persist();
+              renderAll();
+            }
+            if (b.dataset.categoryArchive) {
+              if (
+                state.actions.some((a) => a.categoryId === c.id && !a.archived)
+              ) {
+                alert(
+                  "এই Category-তে Active Action আছে। আগে সেগুলো অন্য Category-তে সরাও বা Archive করো।",
+                );
+                return;
+              }
+              if (confirm("Category archive করবে?")) {
+                c.archived = true;
+                persist();
+                renderAll();
+              }
+            }
+          });
+          $("addPhase").addEventListener("click", () =>
+            addPhaseRow("Phase", 10),
+          );
+          $("resetPresetForm").addEventListener("click", resetPresetForm);
+          $("presetForm").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const id = $("presetEditId").value;
+            const phases = collectPhases();
+            if (!phases.length) {
+              notify("কমপক্ষে একটি পর্যায় দরকার।");
+              return;
+            }
+            const p = {
+              id: id || uid("preset"),
+              name: $("presetName").value.trim(),
+              actionId: $("presetAction").value || null,
+              countUp: $("presetCountup").checked,
+              alert: $("presetAlert").checked,
+              phases,
+              updatedAt: nowISO(),
+            };
+            if (!p.name) {
+              notify("Session name লিখো।");
+              return;
+            }
+            if (id) {
+              const i = state.presets.findIndex((x) => x.id === id);
+              if (i >= 0) state.presets[i] = { ...state.presets[i], ...p };
+            } else state.presets.push({ ...p, createdAt: nowISO() });
+            persist();
+            renderSelects();
+            $("focusPreset").value = p.id;
+            notify("Focus Session সেভ হয়েছে।");
+            resetPresetForm();
+            renderAll();
+          });
+          $("loadPreset").addEventListener("click", () => {
+            const p = presetById($("focusPreset").value);
+            if (!p) {
+              notify("একটি Saved Session বেছে নাও।");
+              return;
+            }
+            $("presetEditId").value = p.id;
+            $("presetFormTitle").textContent = "Focus Session Edit";
+            $("presetName").value = p.name;
+            $("presetAction").value = p.actionId || "";
+            $("presetCountup").checked = p.countUp !== false;
+            $("presetAlert").checked = p.alert !== false;
+            $("phaseEditor").innerHTML = "";
+            p.phases.forEach((ph) => addPhaseRow(ph.name, ph.minutes));
+            [...document.querySelectorAll("#phaseEditor .phase-row")].forEach(
+              (r, i) =>
+                (r.querySelector(".phase-countup").checked =
+                  p.phases[i].countUp !== false),
+            );
+          });
+          $("startPreset").addEventListener("click", () =>
+            startFocus($("focusPreset").value, $("focusMode").value),
+          );
+          $("focusStart").addEventListener("click", () => {
+            if (state.focus.presetId)
+              startFocus(state.focus.presetId, state.focus.mode);
+            else startFocus($("focusPreset").value, $("focusMode").value);
+          });
+          $("deletePreset").addEventListener("click", () => {
+            const id = $("focusPreset").value;
+            if (!id) return;
+            if (
+              state.focus.presetId === id &&
+              (state.focus.running || state.focus.paused)
+            ) {
+              alert("চলমান Session আগে Stop করো।");
+              return;
+            }
+            if (confirm("এই Saved Session মুছে ফেলবে?")) {
+              state.presets = state.presets.filter((p) => p.id !== id);
+              if (state.focus.presetId === id)
+                state.focus = { ...seed().focus };
+              persist();
+              renderAll();
+            }
+          });
+          $("focusPause").addEventListener("click", pauseFocus);
+          $("pauseFocusBtn").addEventListener("click", pauseFocus);
+          $("focusStop").addEventListener("click", stopFocus);
+          $("focusNext").addEventListener("click", nextPhase);
+          $("focusPiPBtn").addEventListener("click", openFocusPiP);
+          $("manualForm").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const actionId = $("manualAction").value || null,
+              minutes = hmToMinutes(
+                $("manualHours").value,
+                $("manualMins").value,
+              ),
+              date = $("manualDate").value;
+            if (!date || minutes < 1) {
+              notify("তারিখ ও সঠিক duration দাও (কমপক্ষে ১ মিনিট)।");
+              return;
+            }
+            addLog({
+              actionId,
+              date,
+              durationSeconds: minutes * 60,
+              note: $("manualNote").value.trim(),
+              kind: "manual",
+            });
+            persist();
+            $("manualHours").value = 0;
+            $("manualMins").value = 30;
+            $("manualNote").value = "";
+            renderAll();
+            notify("Manual Time Entry সেভ হয়েছে।");
+          });
+          $("logFilterDate").addEventListener("change", renderLogs);
+          $("logFilterAction").addEventListener("change", renderLogs);
+          $("clearLogFilters").addEventListener("click", () => {
+            $("logFilterDate").value = "";
+            $("logFilterAction").value = "";
+            renderLogs();
+          });
+          $("logTable").addEventListener("click", (e) => {
+            const edit = e.target.closest("[data-log-edit]");
+            if (edit) {
+              openLogEditModal(edit.dataset.logEdit);
+              return;
+            }
+            const b = e.target.closest("[data-log-delete]");
+            if (!b) return;
+            if (confirm("এই Time Log মুছে ফেলবে?")) {
+              state.logs = state.logs.filter(
+                (l) => l.id !== b.dataset.logDelete,
+              );
+              persist();
+              renderAll();
+            }
+          });
+          $("clearLogs").addEventListener("click", () => {
+            if (confirm("সব Time Log মুছে ফেলবে? এটি undo করা যাবে না।")) {
+              state.logs = [];
+              persist();
+              renderAll();
+            }
+          });
+          $("reviewActionTable").addEventListener("change", (e) => {
+            const el = e.target;
+            const actionId = el.dataset.actionId;
+            if (!actionId) return;
+            const a = actionById(actionId);
+            if (!a) return;
+            const row = el.closest("tr");
+            if (!row) return;
+
+            let h = Math.max(
+              0,
+              Number(row.querySelector(".review-target-hours").value) || 0,
+            );
+            let m = Math.min(
+              59,
+              Math.max(
+                0,
+                Number(row.querySelector(".review-target-mins").value) || 0,
+              ),
+            );
+            row.querySelector(".review-target-hours").value = h;
+            row.querySelector(".review-target-mins").value = m;
+
+            a.weeklyTarget = h * 60 + m;
+            a.updatedAt = nowISO();
+            persist();
+
+            // in-place update of this row's progress
+            const start = lastReviewStart;
+            const end = addDays(start, 6);
+            const sec = state.logs
+              .filter(
+                (l) => l.actionId === a.id && l.date >= start && l.date <= end,
+              )
+              .reduce((s, l) => s + l.durationSeconds, 0);
+            const pct = a.weeklyTarget
+              ? Math.round((sec / 60 / a.weeklyTarget) * 100)
+              : 0;
+            const bar = row.querySelector(".progress > span");
+            if (bar) bar.style.width = Math.min(100, pct) + "%";
+            const pctEl = row.querySelector(".review-pct");
+            if (pctEl) pctEl.textContent = pct + "%";
+
+            // update the "Weekly Action Target" metric card
+            updateReviewTargetDisplay();
+
+            notify("Weekly target আপডেট হয়েছে।");
+          });
+          $("reviewPrev").addEventListener("click", () => {
+            reviewOffset--;
+            renderReview();
+          });
+          $("reviewNext").addEventListener("click", () => {
+            reviewOffset++;
+            renderReview();
+          });
+          $("reviewCurrent").addEventListener("click", () => {
+            reviewOffset = 0;
+            renderReview();
+          });
+          $("saveReview").addEventListener("click", () => {
+            const start =
+              lastReviewStart ||
+              weekStartDate(localDate(), state.settings.weekStart);
+            state.reviews[start] = {
+              good: $("reviewGood").value,
+              change: $("reviewChange").value,
+              updatedAt: nowISO(),
+            };
+            persist();
+            notify("Weekly Review notes সেভ হয়েছে।");
+          });
+          $("newFocusSession").addEventListener("click", () => {
+            editingPresetId = null;
+            $("focusNameWrap").classList.remove("hidden");
+            $("dashboardFocusName").value = "";
+            $("dashboardFocusName").focus();
+            renderDashboardPhaseEditor([
+              { name: "Focus", minutes: 25, countUp: true },
+              { name: "Break", minutes: 5, countUp: true },
+            ]);
+            updateSaveFocusLabel();
+          });
+          $("dashboardPhaseEditor").addEventListener(
+            "input",
+            syncPhaseEditorToPreset,
+          );
+          $("dashboardPhaseEditor").addEventListener(
+            "change",
+            syncPhaseEditorToPreset,
+          );
+          $("dashboardFocusName").addEventListener(
+            "input",
+            syncPhaseEditorToPreset,
+          );
+          $("saveFocusSession").addEventListener("click", () => {
+            const name = $("dashboardFocusName").value.trim();
+            if (!name) {
+              notify("Session name লিখো।");
+              $("dashboardFocusName").focus();
+              return;
+            }
+            const phases = [
+              ...document.querySelectorAll("#dashboardPhaseEditor .phase-row"),
+            ].map((r) => ({
+              name: r.querySelector(".phase-name").value.trim() || "Phase",
+              minutes: phaseHM(r),
+              countUp: r.querySelector(".phase-countup").checked,
+            }));
+            if (!phases.length) {
+              notify("কমপক্ষে একটি phase দরকার।");
+              return;
+            }
+
+            if (editingPresetId && presetById(editingPresetId)) {
+              // === Update existing preset ===
+              const p = presetById(editingPresetId);
+              p.name = name;
+              p.phases = phases;
+              p.updatedAt = nowISO();
+              state.focus.presetId = p.id;
+              persist();
+              renderSelects();
+              $("focusPreset").value = p.id;
+              notify("✓ Session আপডেট হয়েছে।");
+            } else {
+              // === Create new ===
+              const p = {
+                id: uid("preset"),
+                name,
+                actionId: null,
+                countUp: true,
+                alert: true,
+                phases,
+                createdAt: nowISO(),
+              };
+              state.presets.push(p);
+              state.focus.presetId = p.id;
+              editingPresetId = p.id;
+              persist();
+              renderSelects();
+              $("focusPreset").value = p.id;
+              notify("✓ নতুন Focus session সেভ হয়েছে।");
+            }
+            updateSaveFocusLabel();
+            renderAll();
+          });
+          $("focusPreset").addEventListener("change", () => {
+            const p = presetById($("focusPreset").value);
+            if (!p) {
+              editingPresetId = null;
+              return;
+            }
+            state.focus.presetId = p.id;
+            editingPresetId = p.id;
+            $("dashboardFocusName").value = p.name;
+            $("focusNameWrap").classList.remove("hidden");
+            renderDashboardPhaseEditor(p.phases);
+            updateSaveFocusLabel();
+            persist();
+            renderFocus();
+          });
+          $("weekStart").value = String(state.settings.weekStart);
+          $("saveSettings").addEventListener("click", () => {
+            state.settings.weekStart = Number($("weekStart").value);
+            persist();
+            renderAll();
+            notify("Settings সেভ হয়েছে।");
+          });
+          $("exportBtn").addEventListener("click", downloadBackup);
+          $("settingsExport").addEventListener("click", downloadBackup);
+          $("importBtn").addEventListener("click", () =>
+            $("importFile").click(),
+          );
+          $("settingsImport").addEventListener("click", () =>
+            $("importFile").click(),
+          );
+          $("importFile").addEventListener("change", (e) => {
+            if (e.target.files[0]) importBackup(e.target.files[0]);
+            e.target.value = "";
+          });
+          $("resetApp").addEventListener("click", () => {
+            if (
+              confirm(
+                "সতর্কতা: সব Life OS ডেটা স্থায়ীভাবে মুছে যাবে। তুমি কি আগে JSON Export করেছ?",
+              )
+            ) {
+              if (confirm("শেষবার নিশ্চিত করো: সব ডেটা মুছে ফেলবে?")) {
+                localStorage.removeItem(STORAGE_KEY);
+                state = seed();
+                persist();
+                renderAll();
+                notify("Life OS reset হয়েছে।");
+              }
+            }
+          });
+          $("themeToggle").addEventListener("click", () => {
+            const next =
+              document.documentElement.getAttribute("data-theme") === "dark"
+                ? "light"
+                : "dark";
+            document.documentElement.setAttribute("data-theme", next);
+            try {
+              localStorage.setItem("lifeOS.theme", next);
+            } catch (e) {}
+            syncThemeButton();
+          });
+          document.addEventListener("keydown", (e) => {
+            const tag = (e.target.tagName || "").toLowerCase(),
+              typing =
+                ["input", "textarea", "select"].includes(tag) ||
+                e.target.isContentEditable;
+            if (typing) return;
+            if (e.key === " ") {
+              e.preventDefault();
+              if (state.focus.running || state.focus.paused) pauseFocus();
+              else if (state.focus.presetId)
+                startFocus(state.focus.presetId, "timer");
+            } else if (e.key.toLowerCase() === "r" && state.focus.paused)
+              pauseFocus();
+            else if (
+              e.key.toLowerCase() === "s" &&
+              (state.focus.running || state.focus.paused)
+            )
+              stopFocus();
+            else if (e.key === "Escape") {
+              closeModal();
+              closeLogEditModal();
+              $("focusAlert").classList.add("hidden");
+              $("toast").classList.add("hidden");
+            } else if (e.key === "?") {
+              notify(
+                "Shortcuts: Space Start/Pause · R Resume · S Stop · Esc dismiss alert",
+              );
+            }
+          });
+        }
+        function tick() {
+          const f = state.focus;
+          if (f.running) {
+            const phase = activePhase();
+            if (phase) {
+              const dur = (Number(phase.minutes) || 0) * 60;
+              const over = phaseElapsed() >= dur;
+              const allowOT = phase.countUp !== false;
+              if (over && !f.alerted) {
+                f.alerted = true;
+                persist();
+                playNotificationSound(); // সাউন্ড আগে বাজবে
+
+                const p = activePreset();
+                if (!allowOT) {
+                  // Overtime বন্ধ → পরের phase-এ অটো যাবে, না হলে থেমে যাবে
+                  if (p && f.phaseIndex < p.phases.length - 1) {
+                    notify("⏰ সময় শেষ — পরের phase-এ যাচ্ছে।");
+                    nextPhase();
+                  } else {
+                    notify("⏰ শেষ phase শেষ — Focus session বন্ধ হচ্ছে।");
+                    stopFocus();
+                  }
+                  return;
+                }
+                // Overtime চালু → কাউন্ট আপ চলবে
+                notify(
+                  "⏰ এই phase-এর সময় শেষ। Overtime চলছে — Next phase নিজে চাপো।",
+                );
+              }
+              // Safety net: if user toggled overtime off after phase ended while paused,
+              // and then resumed, this ensures the phase progresses correctly.
+              if (over && !allowOT && f.alerted) {
+                f.alerted = true;
+                if (
+                  activePreset() &&
+                  f.phaseIndex < activePreset().phases.length - 1
+                ) {
+                  notify("⏰ Overtime বন্ধ — পরের phase-এ যাচ্ছে।");
+                  nextPhase();
+                } else {
+                  notify("⏰ Overtime বন্ধ — session শেষ।");
+                  stopFocus();
+                }
+                return;
+              }
+              renderFocus();
+            }
+          }
+          renderTrackingMini();
+          renderFocusMini();
+          updateLiveNumbers();
+          updateReviewLiveStats();
+          updatePiPContent();
+        }
+
+        function updateLiveNumbers() {
+          if (state.tracking.activeActionId) {
+            const a = activeAction();
+            if (a) {
+              const emoji = a.emoji ? a.emoji + " " : "";
+              document.title = `⏱ ${fmt(currentTrackingSeconds())} · ${emoji}${a.name}`;
+            }
+          } else if (document.title !== "Life OS — Personal Life Manager") {
+            document.title = "Life OS — Personal Life Manager";
+          }
+          if (!state.tracking.activeActionId) return;
+          const timeStr = fmt(currentTrackingSeconds());
+
+          // Sessions list-এর ভেতরে live tracking pill-এর সময় আপডেট
+          document.querySelectorAll("#todayTasks .pill.green").forEach((el) => {
+            if (el.textContent.startsWith("Tracking")) {
+              el.textContent = "Tracking · " + timeStr;
+            }
+          });
+
+          // আজকের recorded total (live tracking সহ) আপডেট
+          const date = getSelectedDate();
+          const logs = logsForDate(date);
+          const recorded =
+            logs.reduce((s, l) => s + l.durationSeconds, 0) +
+            (state.tracking.segmentStart &&
+            localDate(new Date(state.tracking.segmentStart)) === date
+              ? currentTrackingSeconds()
+              : 0);
+          const recEl = $("todayRecorded");
+          if (recEl) recEl.textContent = humanMinutes(recorded / 60);
+        }
+        function updateSaveFocusLabel() {
+          const btn = $("saveFocusSession");
+          if (!btn) return;
+          btn.textContent = editingPresetId ? "Update session" : "Save session";
+        }
+        function syncPhaseEditorToPreset() {
+          const pid = editingPresetId;
+          if (!pid) return;
+          const p = presetById(pid);
+          if (!p) return;
+          const host = $("dashboardPhaseEditor");
+          if (!host) return;
+          const rows = host.querySelectorAll(".phase-row");
+          if (!rows.length) return;
+
+          const phases = [...rows].map((r) => ({
+            name: r.querySelector(".phase-name").value.trim() || "Phase",
+            minutes: phaseHM(r),
+            countUp: r.querySelector(".phase-countup").checked,
+          }));
+
+          p.phases = phases;
+          p.updatedAt = nowISO();
+          const nameEl = $("dashboardFocusName");
+          if (nameEl) {
+            const nm = nameEl.value.trim();
+            if (nm) p.name = nm;
+          }
+          persist();
+
+          // === Live update the running/paused focus session ===
+          const f = state.focus;
+          if ((f.running || f.paused) && f.presetId === pid) {
+            const phase = activePhase();
+            if (phase) {
+              const dur = (Number(phase.minutes) || 0) * 60;
+              const over = dur > 0 && phaseElapsed() >= dur;
+              const allowOT = phase.countUp !== false;
+
+              if (over && !allowOT) {
+                if (f.running) {
+                  // Running — immediately move on
+                  if (p.phases.length > f.phaseIndex + 1) {
+                    notify("⏰ Overtime বন্ধ — পরের phase-এ যাচ্ছে।");
+                    nextPhase();
+                    return;
+                  } else {
+                    notify("⏰ Overtime বন্ধ — session শেষ।");
+                    stopFocus();
+                    return;
+                  }
+                } else {
+                  // Paused — reset alerted so on resume tick handles it
+                  f.alerted = false;
+                  persist();
+                }
+              }
+            }
+          }
+
+          renderFocus();
+          renderFocusMini();
+        }
+        function renderDashboardPhaseEditor(
+          phases = [{ name: "Focus", minutes: 25, countUp: true }],
+        ) {
+          const host = $("dashboardPhaseEditor");
+          if (!host) return;
+          host.innerHTML =
+            phases
+              .map((p, i) => {
+                const total = Number(p.minutes) || 25,
+                  h = Math.floor(total / 60),
+                  m = total % 60;
+                const ot = p.countUp !== false;
+                return `<div class="phase-row item"><div class="phase-idx">${i + 1}</div><div class="field content"><label>Phase name</label><input class="phase-name" value="${escapeHTML(p.name)}"></div><div class="field phase-num"><label>ঘণ্টা</label><input class="phase-hours" type="number" min="0" value="${h}"></div><div class="field phase-num"><label>মিনিট</label><input class="phase-mins" type="number" min="0" max="59" value="${m}"></div><label class="checkboxrow switch" style="align-self:center" title="চালু থাকলে সময় শেষে Overtime চলবে, বন্ধ থাকলে পরের phase-এ চলে যাবে"><input type="checkbox" class="phase-countup" ${ot ? "checked" : ""}><span>Overtime</span></label><button class="small danger" type="button" data-phase-remove="${i}" aria-label="Remove phase">✕</button></div>`;
+              })
+              .join("") +
+            '<button type="button" id="dashboardAddPhase">+ Add phase</button>';
+          const collect = () =>
+            [...host.querySelectorAll(".phase-row")].map((r) => ({
+              name: r.querySelector(".phase-name").value,
+              minutes: phaseHM(r),
+              countUp: r.querySelector(".phase-countup").checked,
+            }));
+          $("dashboardAddPhase")?.addEventListener("click", () => {
+            const next = collect();
+            next.push({ name: "Break", minutes: 5, countUp: true });
+            renderDashboardPhaseEditor(next);
+            syncPhaseEditorToPreset();
+          });
+          host.querySelectorAll("[data-phase-remove]").forEach((b) =>
+            b.addEventListener("click", () => {
+              const next = collect();
+              next.splice(Number(b.dataset.phaseRemove), 1);
+              renderDashboardPhaseEditor(
+                next.length
+                  ? next
+                  : [{ name: "Focus", minutes: 25, countUp: true }],
+              );
+              syncPhaseEditorToPreset();
+            }),
+          );
+        }
+        function boot() {
+          if (!$("dashboardDate").value) $("dashboardDate").value = localDate();
+          if (!$("manualDate").value) $("manualDate").value = localDate();
+          renderSelects();
+          bindEvents();
+          syncThemeButton();
+          resetPresetForm();
+          renderDashboardPhaseEditor([
+            { name: "Focus", minutes: 25 },
+            { name: "Break", minutes: 5 },
+          ]);
+          renderAll();
+          setInterval(tick, 500);
+        }
+        window.lifeOSApp = {
+          getState: () => JSON.parse(JSON.stringify(state)),
+          emptyState: () => seed(),
+          notify: (message) => notify(message),
+          setState: (data) => {
+            if (!data || !Array.isArray(data.actions) || !Array.isArray(data.categories)) throw new Error("Invalid Life OS data");
+            state = { ...seed(), ...data, schemaVersion: SCHEMA_VERSION,
+              settings: { ...seed().settings, ...(data.settings || {}) },
+              tracking: { ...seed().tracking, ...(data.tracking || {}) },
+              focus: { ...seed().focus, ...(data.focus || {}) }, reviews: data.reviews || {} };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            renderAll();
+          }
+        };
+        boot();
+      })();
+    </script>
+  </body>
+</html>
