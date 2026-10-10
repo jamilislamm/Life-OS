@@ -2,8 +2,20 @@
 <html lang="bn" data-theme="light">
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+    import {
+      getAuth,
+      onAuthStateChanged,
+      createUserWithEmailAndPassword,
+      signInWithEmailAndPassword,
+      signOut,
+    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+    import {
+      getFirestore,
+      doc,
+      getDoc,
+      setDoc,
+      serverTimestamp,
+    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyC5hJwhdAv6XQuk8GQziRjHBVnHjQJ3HDA",
@@ -23,76 +35,197 @@
     const userDoc = (uid) => doc(db, "users", uid, "appData", "main");
 
     function authPanel() {
-      if (document.getElementById('lifeos-auth-panel')) return;
-      const style = document.createElement('style');
+      if (document.getElementById("lifeos-auth-panel")) return;
+      const style = document.createElement("style");
       style.textContent = `#lifeos-auth-panel{position:fixed;inset:0;z-index:99999;background:var(--bg,#f4f6fb);color:var(--text,#172033);display:flex;align-items:center;justify-content:center;padding:20px;font-family:inherit}#lifeos-auth-panel .authbox{width:min(440px,100%);background:var(--card,#fff);border:1px solid var(--border,#ddd);border-radius:18px;padding:24px;box-shadow:0 12px 40px #0002}#lifeos-auth-panel h2{margin:0 0 8px}#lifeos-auth-panel p{line-height:1.55}#lifeos-auth-panel input{box-sizing:border-box;width:100%;padding:12px;margin:6px 0 12px;border:1px solid #bbb;border-radius:9px;font:inherit}#lifeos-auth-panel button{padding:11px 14px;border-radius:9px;border:1px solid #aaa;cursor:pointer;font:inherit;margin:4px 4px 4px 0}#lifeos-auth-panel .authprimary{background:#2459d3;color:white;border-color:#2459d3}#lifeos-auth-panel .authmsg{min-height:24px;font-size:14px;white-space:pre-wrap}#lifeos-auth-panel .authhidden{display:none}`;
       document.head.appendChild(style);
-      const el = document.createElement('div'); el.id='lifeos-auth-panel';
+      const el = document.createElement("div");
+      el.id = "lifeos-auth-panel";
       el.innerHTML = `<div class="authbox"><h2>Life OS Account</h2><p>তোমার ডেটা অ্যাকাউন্টে সেভ হবে, তাই একই ইমেইল দিয়ে অন্য ডিভাইসেও ব্যবহার করতে পারবে।</p><label for="lifeos-email">Email</label><input id="lifeos-email" type="email" autocomplete="email" placeholder="you@example.com"><label for="lifeos-password">Password</label><input id="lifeos-password" type="password" autocomplete="current-password" placeholder="কমপক্ষে ৬ অক্ষর"><div><button class="authprimary" id="lifeos-login">Login</button><button id="lifeos-signup">Create account</button><button id="lifeos-logout" class="authhidden">Log out</button></div><div id="lifeos-auth-msg" class="authmsg" role="status"></div><div id="lifeos-migration" class="authhidden"><hr><h3>এই অ্যাকাউন্টে এখনও ডেটা নেই</h3><p>তোমার JSON Backup থাকলে সেটি আপলোড করাই সবচেয়ে নিরাপদ। চাইলে এই ব্রাউজারের ডেটা কপি করতে পারো, অথবা নতুন করে শুরু করতে পারো।</p><button class="authprimary" id="lifeos-migrate">এই ব্রাউজারের ডেটা Cloud-এ কপি করো</button><button id="lifeos-import-backup">JSON Backup থেকে ডেটা নাও</button><input id="lifeos-backup-file" type="file" accept=".json,application/json" style="display:none"><button id="lifeos-empty">নতুন করে শুরু</button></div><div id="lifeos-cloud-status" class="authhidden"><hr><p>Cloud ডেটা লোড হচ্ছে…</p></div></div>`;
       document.body.appendChild(el);
-      const msg = (t) => { document.getElementById('lifeos-auth-msg').textContent=t; };
-      const email = () => document.getElementById('lifeos-email').value.trim();
-      const password = () => document.getElementById('lifeos-password').value;
-      document.getElementById('lifeos-login').onclick = async () => { try { msg('Login হচ্ছে…'); await signInWithEmailAndPassword(auth,email(),password()); } catch(e) { msg(authError(e)); } };
-      document.getElementById('lifeos-signup').onclick = async () => { try { msg('Account তৈরি হচ্ছে…'); await createUserWithEmailAndPassword(auth,email(),password()); } catch(e) { msg(authError(e)); } };
-      document.getElementById('lifeos-logout').onclick = async () => { cloudReady=false; await signOut(auth); };
-      document.getElementById('lifeos-migrate').onclick = async () => { try { const data=window.lifeOSApp?.getState(); if(!data) throw new Error('App state unavailable'); await setDoc(userDoc(currentUser.uid),{state:data,updatedAt:serverTimestamp()}); await activateApp(data); } catch(e) { msg('Cloud-এ ডেটা সেভ হয়নি: '+authError(e)); } };
-      document.getElementById('lifeos-import-backup').onclick = () => document.getElementById('lifeos-backup-file').click();
-      document.getElementById('lifeos-backup-file').onchange = async (ev) => {
-        const file=ev.target.files?.[0]; if(!file) return;
-        try {
-          const parsed=JSON.parse(await file.text());
-          if(!parsed || !Array.isArray(parsed.actions) || !Array.isArray(parsed.categories) || !Array.isArray(parsed.logs) || !Array.isArray(parsed.presets)) throw new Error('এই JSON ফাইলটি Life OS backup নয়।');
-          if(!confirm('এই JSON Backup-এর ডেটা তোমার Firebase অ্যাকাউন্টে আপলোড হবে। চালিয়ে যাবে?')) return;
-          const data={...parsed}; delete data.exportedAt;
-          await setDoc(userDoc(currentUser.uid),{state:data,updatedAt:serverTimestamp()});
-          await activateApp(data);
-        } catch(e) { msg('Backup import হয়নি: '+(e?.message || authError(e))); }
-        finally { ev.target.value=''; }
+      const msg = (t) => {
+        document.getElementById("lifeos-auth-msg").textContent = t;
       };
-      document.getElementById('lifeos-empty').onclick = async () => { try { const data=window.lifeOSApp?.emptyState(); await setDoc(userDoc(currentUser.uid),{state:data,updatedAt:serverTimestamp()}); await activateApp(data); } catch(e) { msg('সমস্যা হয়েছে: '+authError(e)); } };
+      const email = () => document.getElementById("lifeos-email").value.trim();
+      const password = () => document.getElementById("lifeos-password").value;
+      document.getElementById("lifeos-login").onclick = async () => {
+        try {
+          msg("Login হচ্ছে…");
+          await signInWithEmailAndPassword(auth, email(), password());
+        } catch (e) {
+          msg(authError(e));
+        }
+      };
+      document.getElementById("lifeos-signup").onclick = async () => {
+        try {
+          msg("Account তৈরি হচ্ছে…");
+          await createUserWithEmailAndPassword(auth, email(), password());
+        } catch (e) {
+          msg(authError(e));
+        }
+      };
+      document.getElementById("lifeos-logout").onclick = async () => {
+        cloudReady = false;
+        await signOut(auth);
+      };
+      document.getElementById("lifeos-migrate").onclick = async () => {
+        try {
+          const data = window.lifeOSApp?.getState();
+          if (!data) throw new Error("App state unavailable");
+          await setDoc(userDoc(currentUser.uid), {
+            state: data,
+            updatedAt: serverTimestamp(),
+          });
+          await activateApp(data);
+        } catch (e) {
+          msg("Cloud-এ ডেটা সেভ হয়নি: " + authError(e));
+        }
+      };
+      document.getElementById("lifeos-import-backup").onclick = () =>
+        document.getElementById("lifeos-backup-file").click();
+      document.getElementById("lifeos-backup-file").onchange = async (ev) => {
+        const file = ev.target.files?.[0];
+        if (!file) return;
+        try {
+          const parsed = JSON.parse(await file.text());
+          if (
+            !parsed ||
+            !Array.isArray(parsed.actions) ||
+            !Array.isArray(parsed.categories) ||
+            !Array.isArray(parsed.logs) ||
+            !Array.isArray(parsed.presets)
+          )
+            throw new Error("এই JSON ফাইলটি Life OS backup নয়।");
+          if (
+            !confirm(
+              "এই JSON Backup-এর ডেটা তোমার Firebase অ্যাকাউন্টে আপলোড হবে। চালিয়ে যাবে?",
+            )
+          )
+            return;
+          const data = { ...parsed };
+          delete data.exportedAt;
+          await setDoc(userDoc(currentUser.uid), {
+            state: data,
+            updatedAt: serverTimestamp(),
+          });
+          await activateApp(data);
+        } catch (e) {
+          msg("Backup import হয়নি: " + (e?.message || authError(e)));
+        } finally {
+          ev.target.value = "";
+        }
+      };
+      document.getElementById("lifeos-empty").onclick = async () => {
+        try {
+          const data = window.lifeOSApp?.emptyState();
+          await setDoc(userDoc(currentUser.uid), {
+            state: data,
+            updatedAt: serverTimestamp(),
+          });
+          await activateApp(data);
+        } catch (e) {
+          msg("সমস্যা হয়েছে: " + authError(e));
+        }
+      };
       window.lifeOSAuthMessage = msg;
     }
     function authError(e) {
-      const map={ 'auth/invalid-email':'ইমেইল ঠিক নয়।','auth/missing-password':'পাসওয়ার্ড লিখো।','auth/weak-password':'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হওয়া দরকার।','auth/email-already-in-use':'এই ইমেইলে অ্যাকাউন্ট আছে; Login করো।','auth/invalid-credential':'ইমেইল বা পাসওয়ার্ড সঠিক নয়।','auth/network-request-failed':'ইন্টারনেট সংযোগ পরীক্ষা করো।','permission-denied':'Firestore Rules পরীক্ষা করতে হবে।' };
-      return map[e?.code] || (e?.message || 'অজানা সমস্যা হয়েছে।');
+      const map = {
+        "auth/invalid-email": "ইমেইল ঠিক নয়।",
+        "auth/missing-password": "পাসওয়ার্ড লিখো।",
+        "auth/weak-password": "পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হওয়া দরকার।",
+        "auth/email-already-in-use": "এই ইমেইলে অ্যাকাউন্ট আছে; Login করো।",
+        "auth/invalid-credential": "ইমেইল বা পাসওয়ার্ড সঠিক নয়।",
+        "auth/network-request-failed": "ইন্টারনেট সংযোগ পরীক্ষা করো।",
+        "permission-denied": "Firestore Rules পরীক্ষা করতে হবে।",
+      };
+      return map[e?.code] || e?.message || "অজানা সমস্যা হয়েছে।";
     }
     async function activateApp(data) {
-      cloudReady=false;
+      cloudReady = false;
       window.lifeOSApp?.setState(data);
-      cloudReady=true;
-      document.getElementById('lifeos-auth-panel').style.display='none';
-      document.getElementById('lifeos-userbar')?.remove();
-      const bar=document.createElement('div'); bar.id='lifeos-userbar';
-      bar.style.cssText='position:sticky;top:0;z-index:9999;background:#e8f0ff;color:#18366f;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;font:14px system-ui';
-      bar.innerHTML=`<span>Cloud Sync: <strong>${currentUser.email}</strong></span><button id="lifeos-bar-logout" style="padding:6px 10px;cursor:pointer">Log out</button>`;
+      cloudReady = true;
+      document.getElementById("lifeos-auth-panel").style.display = "none";
+      document.getElementById("lifeos-userbar")?.remove();
+      const bar = document.createElement("div");
+      bar.id = "lifeos-userbar";
+      bar.style.cssText =
+        "position:sticky;top:0;z-index:9999;background:#e8f0ff;color:#18366f;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;font:14px system-ui";
+      bar.innerHTML = `<span>Cloud Sync: <strong>${currentUser.email}</strong></span><button id="lifeos-bar-logout" style="padding:6px 10px;cursor:pointer">Log out</button>`;
       document.body.prepend(bar);
-      document.getElementById('lifeos-bar-logout').onclick=async()=>{cloudReady=false;await signOut(auth);};
+      document.getElementById("lifeos-bar-logout").onclick = async () => {
+        cloudReady = false;
+        await signOut(auth);
+      };
     }
     window.lifeOSFirebase = {
-      save(data) { if (!currentUser || !cloudReady) return; pendingState=data; clearTimeout(saveTimer); saveTimer=setTimeout(async()=>{ const snapshot=pendingState; try { await setDoc(userDoc(currentUser.uid),{state:snapshot,updatedAt:serverTimestamp()}); } catch(e) { console.error('Cloud save failed',e); window.lifeOSApp?.notify?.('Cloud sync হয়নি। ইন্টারনেট ও Firestore Rules পরীক্ষা করো।'); } },700); },
+      save(data) {
+        if (!currentUser || !cloudReady) return;
+        pendingState = data;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(async () => {
+          const snapshot = pendingState;
+          try {
+            await setDoc(userDoc(currentUser.uid), {
+              state: snapshot,
+              updatedAt: serverTimestamp(),
+            });
+          } catch (e) {
+            console.error("Cloud save failed", e);
+            window.lifeOSApp?.notify?.(
+              "Cloud sync হয়নি। ইন্টারনেট ও Firestore Rules পরীক্ষা করো।",
+            );
+          }
+        }, 700);
+      },
     };
-    window.addEventListener('DOMContentLoaded', authPanel);
+    window.addEventListener("DOMContentLoaded", authPanel);
     onAuthStateChanged(auth, async (user) => {
-      currentUser=user; cloudReady=false;
-      const panel=document.getElementById('lifeos-auth-panel');
+      currentUser = user;
+      cloudReady = false;
+      const panel = document.getElementById("lifeos-auth-panel");
       if (!panel) authPanel();
-      const p=document.getElementById('lifeos-auth-panel');
-      p.style.display='flex';
-      document.getElementById('lifeos-logout').classList.toggle('authhidden',!user);
-      document.getElementById('lifeos-login').classList.toggle('authhidden',!!user);
-      document.getElementById('lifeos-signup').classList.toggle('authhidden',!!user);
-      document.getElementById('lifeos-migration').classList.add('authhidden');
-      if (!user) { window.lifeOSAuthMessage?.('Login করো অথবা নতুন অ্যাকাউন্ট তৈরি করো।'); document.getElementById('lifeos-email').disabled=false; document.getElementById('lifeos-password').disabled=false; return; }
-      document.getElementById('lifeos-email').value=user.email||'';
-      document.getElementById('lifeos-email').disabled=true; document.getElementById('lifeos-password').disabled=true;
-      window.lifeOSAuthMessage?.('তোমার Cloud ডেটা খোঁজা হচ্ছে…');
+      const p = document.getElementById("lifeos-auth-panel");
+      p.style.display = "flex";
+      document
+        .getElementById("lifeos-logout")
+        .classList.toggle("authhidden", !user);
+      document
+        .getElementById("lifeos-login")
+        .classList.toggle("authhidden", !!user);
+      document
+        .getElementById("lifeos-signup")
+        .classList.toggle("authhidden", !!user);
+      document.getElementById("lifeos-migration").classList.add("authhidden");
+      if (!user) {
+        window.lifeOSAuthMessage?.("Login করো অথবা নতুন অ্যাকাউন্ট তৈরি করো।");
+        document.getElementById("lifeos-email").disabled = false;
+        document.getElementById("lifeos-password").disabled = false;
+        return;
+      }
+      document.getElementById("lifeos-email").value = user.email || "";
+      document.getElementById("lifeos-email").disabled = true;
+      document.getElementById("lifeos-password").disabled = true;
+      window.lifeOSAuthMessage?.("তোমার Cloud ডেটা খোঁজা হচ্ছে…");
       try {
-        const snap=await getDoc(userDoc(user.uid));
-        if (snap.exists() && snap.data().state) await activateApp(snap.data().state);
-        else { document.getElementById('lifeos-migration').classList.remove('authhidden'); window.lifeOSAuthMessage?.('এই অ্যাকাউন্টে ডেটা পাওয়া যায়নি। নিচের একটি বিকল্প বেছে নাও।'); }
-      } catch(e) { window.lifeOSAuthMessage?.('Cloud ডেটা পড়া যায়নি: '+authError(e)+'
-Firestore Rules ঠিক আছে কি না দেখো।'); }
+        const snap = await getDoc(userDoc(user.uid));
+        if (snap.exists() && snap.data().state)
+          await activateApp(snap.data().state);
+        else {
+          document
+            .getElementById("lifeos-migration")
+            .classList.remove("authhidden");
+          window.lifeOSAuthMessage?.(
+            "এই অ্যাকাউন্টে ডেটা পাওয়া যায়নি। নিচের একটি বিকল্প বেছে নাও।",
+          );
+        }
+      } catch (e) {
+        window.lifeOSAuthMessage?.(
+          "Cloud ডেটা পড়া যায়নি: " +
+            authError(e) +
+            "\nFirestore Rules ঠিক আছে কি না দেখো।",
+        );
+      }
     });
   </script>
   <head>
@@ -2181,8 +2314,8 @@ Firestore Rules ঠিক আছে কি না দেখো।'); }
                 <h2>Backup &amp; Data</h2>
                 <div class="stack">
                   <p class="muted tiny" style="margin: 0">
-                    ডেটা তোমার Firebase অ্যাকাউন্টে Cloud Sync হবে। নিরাপত্তার জন্য
-                    নিয়মিত JSON Export করে ব্যাকআপ রাখো।
+                    ডেটা তোমার Firebase অ্যাকাউন্টে Cloud Sync হবে। নিরাপত্তার
+                    জন্য নিয়মিত JSON Export করে ব্যাকআপ রাখো।
                   </p>
                   <button id="settingsExport">
                     Export full backup (.json)
@@ -2201,9 +2334,7 @@ Firestore Rules ঠিক আছে কি না দেখো।'); }
           </section>
         </main>
 
-        <footer class="foot">
-          Life OS • Firebase account • Cloud sync
-        </footer>
+        <footer class="foot">Life OS • Firebase account • Cloud sync</footer>
       </div>
     </div>
 
@@ -2524,7 +2655,11 @@ Firestore Rules ঠিক আছে কি না দেখো।'); }
           } catch (e) {
             notify("ডেটা সেভ করা যায়নি। Browser storage পূর্ণ কি না দেখো।");
           }
-          try { window.lifeOSFirebase?.save(JSON.parse(JSON.stringify(state))); } catch (e) { console.warn("Cloud sync queue failed", e); }
+          try {
+            window.lifeOSFirebase?.save(JSON.parse(JSON.stringify(state)));
+          } catch (e) {
+            console.warn("Cloud sync queue failed", e);
+          }
         }
         function notify(msg) {
           const el = $("toast");
@@ -4717,14 +4852,24 @@ Firestore Rules ঠিক আছে কি না দেখো।'); }
           emptyState: () => seed(),
           notify: (message) => notify(message),
           setState: (data) => {
-            if (!data || !Array.isArray(data.actions) || !Array.isArray(data.categories)) throw new Error("Invalid Life OS data");
-            state = { ...seed(), ...data, schemaVersion: SCHEMA_VERSION,
+            if (
+              !data ||
+              !Array.isArray(data.actions) ||
+              !Array.isArray(data.categories)
+            )
+              throw new Error("Invalid Life OS data");
+            state = {
+              ...seed(),
+              ...data,
+              schemaVersion: SCHEMA_VERSION,
               settings: { ...seed().settings, ...(data.settings || {}) },
               tracking: { ...seed().tracking, ...(data.tracking || {}) },
-              focus: { ...seed().focus, ...(data.focus || {}) }, reviews: data.reviews || {} };
+              focus: { ...seed().focus, ...(data.focus || {}) },
+              reviews: data.reviews || {},
+            };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
             renderAll();
-          }
+          },
         };
         boot();
       })();
