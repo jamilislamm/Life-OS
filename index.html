@@ -37,7 +37,7 @@
     function authPanel() {
       if (document.getElementById("lifeos-auth-panel")) return;
       const style = document.createElement("style");
-      style.textContent = `#lifeos-auth-panel{position:fixed;inset:0;z-index:99999;background:var(--bg,#f4f6fb);color:var(--text,#172033);display:flex;align-items:center;justify-content:center;padding:20px;font-family:inherit}#lifeos-auth-panel .authbox{width:min(440px,100%);background:var(--card,#fff);border:1px solid var(--border,#ddd);border-radius:18px;padding:24px;box-shadow:0 12px 40px #0002}#lifeos-auth-panel h2{margin:0 0 8px}#lifeos-auth-panel p{line-height:1.55}#lifeos-auth-panel input{box-sizing:border-box;width:100%;padding:12px;margin:6px 0 12px;border:1px solid #bbb;border-radius:9px;font:inherit}#lifeos-auth-panel button{padding:11px 14px;border-radius:9px;border:1px solid #aaa;cursor:pointer;font:inherit;margin:4px 4px 4px 0}#lifeos-auth-panel .authprimary{background:#2459d3;color:white;border-color:#2459d3}#lifeos-auth-panel .authmsg{min-height:24px;font-size:14px;white-space:pre-wrap}#lifeos-auth-panel .authhidden{display:none}`;
+      style.textContent = `#lifeos-auth-panel{position:fixed;inset:0;z-index:99999;background:var(--bg,#f4f6fb);color:var(--text,#172033);display:none;align-items:center;justify-content:center;padding:20px;font-family:inherit}#lifeos-auth-panel .authbox{width:min(440px,100%);background:var(--card,#fff);border:1px solid var(--border,#ddd);border-radius:18px;padding:24px;box-shadow:0 12px 40px #0002}#lifeos-auth-panel h2{margin:0 0 8px}#lifeos-auth-panel p{line-height:1.55}#lifeos-auth-panel input{box-sizing:border-box;width:100%;padding:12px;margin:6px 0 12px;border:1px solid #bbb;border-radius:9px;font:inherit}#lifeos-auth-panel button{padding:11px 14px;border-radius:9px;border:1px solid #aaa;cursor:pointer;font:inherit;margin:4px 4px 4px 0}#lifeos-auth-panel .authprimary{background:#2459d3;color:white;border-color:#2459d3}#lifeos-auth-panel .authmsg{min-height:24px;font-size:14px;white-space:pre-wrap}#lifeos-auth-panel .authhidden{display:none}`;
       document.head.appendChild(style);
       const el = document.createElement("div");
       el.id = "lifeos-auth-panel";
@@ -186,7 +186,7 @@
       const panel = document.getElementById("lifeos-auth-panel");
       if (!panel) authPanel();
       const p = document.getElementById("lifeos-auth-panel");
-      p.style.display = "flex";
+      p.style.display = user ? "none" : "flex";
       document
         .getElementById("lifeos-logout")
         .classList.toggle("authhidden", !user);
@@ -212,6 +212,7 @@
         if (snap.exists() && snap.data().state)
           await activateApp(snap.data().state);
         else {
+          p.style.display = "flex";
           document
             .getElementById("lifeos-migration")
             .classList.remove("authhidden");
