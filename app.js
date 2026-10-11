@@ -101,6 +101,12 @@
     ];
     return {
       schemaVersion: SCHEMA_VERSION,
+      lifeMap: {
+        nodes: [],
+        connections: [],
+        customTypes: [],
+        settings: { autoComplete: "manual" },
+      },
       categories: cats,
       actions: [],
       tasks: [],
@@ -169,6 +175,7 @@
         ...seed(),
         ...data,
         schemaVersion: SCHEMA_VERSION,
+        lifeMap: data.lifeMap || seed().lifeMap,
         settings: { ...seed().settings, ...(data.settings || {}) },
         tracking: { ...seed().tracking, ...(data.tracking || {}) },
         focus: { ...seed().focus, ...(data.focus || {}) },
@@ -558,6 +565,639 @@
     r.archived = true;
     persist();
   }
+
+  // ============================================================
+  // LIFE MAP — PART 1: DATA, NODE HELPERS AND RENDERING
+  // ============================================================
+
+  const LIFE_MAP_TYPES = {
+    goal: { label: "Goal", icon: "◎" },
+    step: { label: "Step", icon: "↳" },
+    barrier: { label: "Barrier", icon: "△" },
+    loop: { label: "Loop", icon: "⟳" },
+    belief: { label: "Belief", icon: "◇" },
+    "skill-gap": { label: "Skill Gap", icon: "◈" },
+    condition: { label: "Condition", icon: "○" },
+    measure: { label: "Measure", icon: "◫" },
+    action: { label: "Action", icon: "✓" },
+    research: { label: "Research", icon: "⌕" },
+    decision: { label: "Decision", icon: "⑂" },
+    experiment: { label: "Experiment", icon: "⚗" },
+  };
+
+  const LIFE_MAP_RELATIONS = {
+    hierarchy: "Parent / Child",
+    supports: "Supports",
+    blocks: "Blocks",
+    addresses: "Addresses",
+    depends: "Depends on",
+    tests: "Tests",
+    related: "Related to",
+  };
+
+  let lifeMapSelectedId = null;
+  let lifeMapConnectSourceId = null;
+  let lifeMapViewMode = "map";
+  let lifeMapZoom = 1;
+  let lifeMapPanX = 0;
+  let lifeMapPanY = 0;
+  let lifeMapDrag = null;
+
+  function normalizeLifeMap(input) {
+    const data = input && typeof input === "object" ? input : {};
+
+    const validTypes = new Set(Object.keys(LIFE_MAP_TYPES));
+    const validStatuses = new Set([
+      "not-started",
+      "in-progress",
+      "done",
+      "active",
+      "resolved",
+      "observed",
+      "tested",
+      "achieved",
+    ]);
+
+    const nodes = Array.isArray(data.nodes)
+      ? data.nodes
+          .filter((n) => n && typeof n === "object" && n.id)
+          .map((n, index) => ({
+            id: String(n.id),
+            name: String(n.name || "Untitled node"),
+            type: validTypes.has(n.type) ? n.type : "step",
+            status: validStatuses.has(n.status) ? n.status : "not-started",
+            parentId: n.parentId ? String(n.parentId) : null,
+            description: String(n.description || ""),
+            x: Number.isFinite(Number(n.x))
+              ? Math.max(10, Number(n.x))
+              : 60 + (index % 3) * 235,
+            y: Number.isFinite(Number(n.y))
+              ? Math.max(10, Number(n.y))
+              : 60 + Math.floor(index / 3) * 145,
+            createdAt: n.createdAt || nowISO(),
+            updatedAt: n.updatedAt || n.createdAt || nowISO(),
+          }))
+      : [];
+
+    const nodeIds = new Set(nodes.map((n) => n.id));
+
+    nodes.forEach((node) => {
+      if (node.parentId === node.id || !nodeIds.has(node.parentId)) {
+        node.parentId = null;
+      }
+    });
+
+    const connections = Array.isArray(data.connections)
+      ? data.connections
+          .filter(
+            (c) =>
+              c &&
+              c.id &&
+              nodeIds.has(String(c.sourceId)) &&
+              nodeIds.has(String(c.targetId)) &&
+              c.sourceId !== c.targetId &&
+              c.relation !== "hierarchy",
+          )
+          .map((c) => ({
+            id: String(c.id),
+            sourceId: String(c.sourceId),
+            targetId: String(c.targetId),
+            relation: LIFE_MAP_RELATIONS[c.relation] ? c.relation : "related",
+            createdAt: c.createdAt || nowISO(),
+          }))
+      : [];
+
+    return {
+      nodes,
+      connections,
+      customTypes: Array.isArray(data.customTypes) ? data.customTypes : [],
+      settings: {
+        autoComplete: "manual",
+        ...(data.settings || {}),
+      },
+    };
+  }
+
+  function lifeMapData() {
+    if (!state.lifeMap) {
+      state.lifeMap = normalizeLifeMap(null);
+    }
+    return state.lifeMap;
+  }
+
+  function lifeMapNodeById(id) {
+    return lifeMapData().nodes.find((node) => node.id === id) || null;
+  }
+
+  function lifeMapTypeLabel(type) {
+    return LIFE_MAP_TYPES[type]?.label || "Custom Node";
+  }
+
+  function lifeMapStatusLabel(status) {
+    const labels = {
+      "not-started": "Not started",
+      "in-progress": "In progress",
+      done: "Done",
+      active: "Active",
+      resolved: "Resolved",
+      observed: "Observed",
+      tested: "Tested",
+      achieved: "Achieved",
+    };
+    return labels[status] || status || "Not started";
+  }
+
+  function lifeMapRelationLabel(relation) {
+    return LIFE_MAP_RELATIONS[relation] || "Related to";
+  }
+
+  function lifeMapCreateNode(data = {}) {
+    const map = lifeMapData();
+
+    const index = map.nodes.length;
+    const node = {
+      id: uid("lmnode"),
+      name: String(data.name || "New node"),
+      type: LIFE_MAP_TYPES[data.type] ? data.type : "goal",
+      status: data.status || "not-started",
+      parentId: data.parentId || null,
+      description: String(data.description || ""),
+      x: Number.isFinite(Number(data.x))
+        ? Number(data.x)
+        : 60 + (index % 3) * 235,
+      y: Number.isFinite(Number(data.y))
+        ? Number(data.y)
+        : 60 + Math.floor(index / 3) * 145,
+      createdAt: nowISO(),
+      updatedAt: nowISO(),
+    };
+
+    map.nodes.push(node);
+    persist();
+
+    return node;
+  }
+
+  function lifeMapSaveNode(id, updates) {
+    const node = lifeMapNodeById(id);
+    if (!node) return false;
+
+    const map = lifeMapData();
+
+    if (updates.parentId) {
+      if (updates.parentId === id) {
+        notify("একটি Node নিজের Parent হতে পারবে না।");
+        return false;
+      }
+
+      if (!lifeMapNodeById(updates.parentId)) {
+        updates.parentId = null;
+      }
+
+      // Prevent hierarchy cycles.
+      let ancestorId = updates.parentId;
+      const visited = new Set([id]);
+
+      while (ancestorId) {
+        if (visited.has(ancestorId)) {
+          notify("এই Parent দিলে Hierarchy-তে Cycle তৈরি হবে।");
+          return false;
+        }
+
+        visited.add(ancestorId);
+        ancestorId = lifeMapNodeById(ancestorId)?.parentId || null;
+      }
+    }
+
+    Object.assign(node, updates, { updatedAt: nowISO() });
+
+    // A hierarchy edge is represented by parentId, not a second
+    // independent connection.
+    map.connections = map.connections.filter(
+      (connection) => connection.sourceId !== id || connection.targetId !== id,
+    );
+
+    persist();
+    return true;
+  }
+
+  function lifeMapDeleteNodeById(id) {
+    const map = lifeMapData();
+    const node = lifeMapNodeById(id);
+    if (!node) return false;
+
+    // Children become root nodes instead of being deleted.
+    map.nodes.forEach((child) => {
+      if (child.parentId === id) child.parentId = null;
+    });
+
+    map.nodes = map.nodes.filter((item) => item.id !== id);
+
+    map.connections = map.connections.filter(
+      (connection) => connection.sourceId !== id && connection.targetId !== id,
+    );
+
+    if (lifeMapSelectedId === id) lifeMapSelectedId = null;
+    if (lifeMapConnectSourceId === id) lifeMapConnectSourceId = null;
+
+    persist();
+    return true;
+  }
+
+  function lifeMapConnectNodes(sourceId, targetId, relation) {
+    if (!sourceId || !targetId || sourceId === targetId) {
+      notify("দুটি আলাদা Node নির্বাচন করো।");
+      return false;
+    }
+
+    if (!lifeMapNodeById(sourceId) || !lifeMapNodeById(targetId)) {
+      notify("নির্বাচিত Node পাওয়া যায়নি।");
+      return false;
+    }
+
+    if (!LIFE_MAP_RELATIONS[relation] || relation === "hierarchy") {
+      notify("Hierarchy Parent Node দিয়ে নির্ধারণ করতে হবে।");
+      return false;
+    }
+
+    const map = lifeMapData();
+    const exists = map.connections.some(
+      (connection) =>
+        connection.sourceId === sourceId &&
+        connection.targetId === targetId &&
+        connection.relation === relation,
+    );
+
+    if (exists) {
+      notify("এই Connection আগে থেকেই আছে।");
+      return false;
+    }
+
+    map.connections.push({
+      id: uid("lmconn"),
+      sourceId,
+      targetId,
+      relation,
+      createdAt: nowISO(),
+    });
+
+    persist();
+    return true;
+  }
+
+  function lifeMapDisconnect(connectionId) {
+    const map = lifeMapData();
+    const previousLength = map.connections.length;
+
+    map.connections = map.connections.filter(
+      (connection) => connection.id !== connectionId,
+    );
+
+    if (map.connections.length !== previousLength) persist();
+  }
+
+  function lifeMapRenderParentOptions(selectedNode) {
+    const select = $("lifeMapParent");
+    if (!select) return;
+
+    const currentValue = selectedNode?.parentId || "";
+
+    const possibleParents = lifeMapData().nodes.filter((node) => {
+      if (!selectedNode) return true;
+      if (node.id === selectedNode.id) return false;
+
+      // Do not allow a descendant to become its ancestor.
+      let parentId = node.parentId;
+      const visited = new Set();
+
+      while (parentId && !visited.has(parentId)) {
+        if (parentId === selectedNode.id) return false;
+        visited.add(parentId);
+        parentId = lifeMapNodeById(parentId)?.parentId || null;
+      }
+
+      return true;
+    });
+
+    select.innerHTML =
+      '<option value="">কোনো Parent নেই</option>' +
+      possibleParents
+        .map(
+          (node) =>
+            `<option value="${escapeHTML(node.id)}">${escapeHTML(node.name)}</option>`,
+        )
+        .join("");
+
+    select.value = currentValue;
+  }
+
+  function lifeMapRenderInspector() {
+    const node = lifeMapNodeById(lifeMapSelectedId);
+    const form = $("lifeMapNodeForm");
+    const empty = $("lifeMapNoSelection");
+    const relationships = $("lifeMapRelationships");
+    const title = $("lifeMapInspectorTitle");
+
+    if (!node) {
+      form?.classList.add("hidden");
+      empty?.classList.remove("hidden");
+      relationships?.classList.add("hidden");
+      if (title) title.textContent = "Node Details";
+      return;
+    }
+
+    form?.classList.remove("hidden");
+    empty?.classList.add("hidden");
+    relationships?.classList.remove("hidden");
+
+    if (title) title.textContent = "Edit Node";
+
+    $("lifeMapNodeId").value = node.id;
+    $("lifeMapNodeName").value = node.name;
+    $("lifeMapNodeType").value = node.type;
+    $("lifeMapNodeStatus").value = node.status;
+    $("lifeMapNodeDescription").value = node.description;
+
+    lifeMapRenderParentOptions(node);
+
+    const related = lifeMapData().connections.filter(
+      (connection) =>
+        connection.sourceId === node.id || connection.targetId === node.id,
+    );
+
+    const host = $("lifeMapConnectionList");
+
+    host.innerHTML = related.length
+      ? related
+          .map((connection) => {
+            const outgoing = connection.sourceId === node.id;
+            const otherId = outgoing
+              ? connection.targetId
+              : connection.sourceId;
+            const other = lifeMapNodeById(otherId);
+            if (!other) return "";
+
+            const direction = outgoing ? "→" : "←";
+
+            return `
+              <div class="lifemap-connection-item">
+                <div>
+                  <strong>${direction} ${escapeHTML(other.name)}</strong>
+                  <small>${escapeHTML(lifeMapRelationLabel(connection.relation))}</small>
+                </div>
+                <button
+                  type="button"
+                  data-lm-disconnect="${escapeHTML(connection.id)}"
+                  aria-label="Remove connection"
+                >Remove</button>
+              </div>
+            `;
+          })
+          .join("")
+      : '<p class="muted tiny">এই Node-এর সঙ্গে এখনো কোনো সাধারণ Connection নেই।</p>';
+  }
+
+  function lifeMapRenderTree() {
+    const host = $("lifeMapTree");
+    if (!host) return;
+
+    const nodes = lifeMapData().nodes;
+
+    if (!nodes.length) {
+      host.innerHTML =
+        '<div class="lifemap-tree-empty">এখনো কোনো Node তৈরি করা হয়নি।</div>';
+      return;
+    }
+
+    function renderBranch(node, path = new Set()) {
+      if (path.has(node.id)) return "";
+
+      const nextPath = new Set(path);
+      nextPath.add(node.id);
+
+      const selected = node.id === lifeMapSelectedId;
+      const children = nodes.filter((child) => child.parentId === node.id);
+
+      return `
+        <div class="lifemap-tree-branch">
+          <div
+            class="lifemap-tree-item ${selected ? "selected" : ""}"
+            data-lm-select="${escapeHTML(node.id)}"
+            role="button"
+            tabindex="0"
+          >
+            <div class="lifemap-tree-item-content">
+              <strong>${escapeHTML(LIFE_MAP_TYPES[node.type]?.icon || "◇")} ${escapeHTML(node.name)}</strong>
+              <small>${escapeHTML(lifeMapTypeLabel(node.type))} · ${escapeHTML(lifeMapStatusLabel(node.status))}</small>
+            </div>
+          </div>
+          ${
+            children.length
+              ? `<div class="lifemap-tree-children">${children
+                  .map((child) => renderBranch(child, nextPath))
+                  .join("")}</div>`
+              : ""
+          }
+        </div>
+      `;
+    }
+
+    const roots = nodes.filter(
+      (node) => !node.parentId || !lifeMapNodeById(node.parentId),
+    );
+
+    const renderedIds = new Set();
+
+    function collectIds(node) {
+      if (renderedIds.has(node.id)) return;
+      renderedIds.add(node.id);
+      nodes.filter((child) => child.parentId === node.id).forEach(collectIds);
+    }
+
+    roots.forEach(collectIds);
+
+    const disconnected = nodes.filter((node) => !renderedIds.has(node.id));
+
+    host.innerHTML = [
+      ...roots.map((node) => renderBranch(node)),
+      ...disconnected.map((node) => renderBranch(node)),
+    ].join("");
+  }
+
+  function lifeMapRenderEdges() {
+    const canvas = $("lifeMapCanvas");
+    const svg = $("lifeMapEdges");
+    if (!canvas || !svg) return;
+
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+
+    const nodes = lifeMapData().nodes;
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const connections = lifeMapData().connections;
+
+    const edges = [];
+
+    // Parent-child hierarchy is rendered separately from ordinary links.
+    nodes.forEach((child) => {
+      if (!child.parentId) return;
+
+      const parent = nodeMap.get(child.parentId);
+      if (!parent) return;
+
+      edges.push({
+        source: parent,
+        target: child,
+        relation: "hierarchy",
+      });
+    });
+
+    connections.forEach((connection) => {
+      const source = nodeMap.get(connection.sourceId);
+      const target = nodeMap.get(connection.targetId);
+      if (!source || !target) return;
+
+      edges.push({
+        source,
+        target,
+        relation: connection.relation,
+      });
+    });
+
+    svg.innerHTML = edges
+      .map(({ source, target, relation }) => {
+        const x1 = source.x + 95;
+        const y1 = source.y + 42;
+        const x2 = target.x + 95;
+        const y2 = target.y + 42;
+        const midX = (x1 + x2) / 2;
+
+        const path =
+          Math.abs(x2 - x1) > 35
+            ? `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`
+            : `M ${x1} ${y1} L ${x2} ${y2}`;
+
+        return `<path class="lifemap-edge" data-relation="${escapeHTML(relation)}" d="${path}"></path>`;
+      })
+      .join("");
+  }
+
+  function lifeMapApplyViewport() {
+    const transform = `translate(${lifeMapPanX}px, ${lifeMapPanY}px) scale(${lifeMapZoom})`;
+
+    const edges = $("lifeMapEdges");
+    const nodes = $("lifeMapNodes");
+
+    if (edges) {
+      edges.style.transformOrigin = "0 0";
+      edges.style.transform = transform;
+    }
+
+    if (nodes) {
+      nodes.style.transformOrigin = "0 0";
+      nodes.style.transform = transform;
+    }
+
+    const label = $("lifeMapZoomLevel");
+    if (label) label.textContent = `${Math.round(lifeMapZoom * 100)}%`;
+  }
+
+  function renderLifeMap() {
+    const map = lifeMapData();
+    const nodesHost = $("lifeMapNodes");
+    const empty = $("lifeMapEmpty");
+    const count = $("lifeMapNodeCount");
+
+    if (!nodesHost) return;
+
+    if (count) {
+      count.textContent = `${map.nodes.length} Node${map.nodes.length === 1 ? "" : "s"}`;
+    }
+
+    if (empty) {
+      empty.classList.toggle("hidden", map.nodes.length > 0);
+    }
+
+    nodesHost.innerHTML = map.nodes
+      .map((node) => {
+        const type = LIFE_MAP_TYPES[node.type] || {
+          label: "Custom Node",
+          icon: "◇",
+        };
+
+        const selected = node.id === lifeMapSelectedId;
+
+        const shortDescription = node.description
+          ? node.description.length > 90
+            ? node.description.slice(0, 87) + "…"
+            : node.description
+          : "";
+
+        return `
+          <div
+            class="lifemap-node ${selected ? "selected" : ""}"
+            data-lm-node="${escapeHTML(node.id)}"
+            data-type="${escapeHTML(node.type)}"
+            data-status="${escapeHTML(node.status)}"
+            style="left:${node.x}px;top:${node.y}px"
+            role="button"
+            tabindex="0"
+            aria-label="${escapeHTML(node.name)}"
+          >
+            <div class="lifemap-node-meta">
+              <span class="lifemap-node-type">${escapeHTML(type.icon)} ${escapeHTML(type.label)}</span>
+            </div>
+            <strong class="lifemap-node-name">${escapeHTML(node.name)}</strong>
+            <div class="lifemap-node-meta">
+              <span class="lifemap-node-status">${escapeHTML(lifeMapStatusLabel(node.status))}</span>
+            </div>
+            ${
+              shortDescription
+                ? `<span class="lifemap-node-description">${escapeHTML(shortDescription)}</span>`
+                : ""
+            }
+          </div>
+        `;
+      })
+      .join("");
+
+    lifeMapRenderEdges();
+    lifeMapRenderTree();
+    lifeMapRenderInspector();
+    lifeMapApplyViewport();
+
+    const treePanel = $("lifeMapTreePanel");
+    const mapPanel = $("lifeMapCanvas")?.closest(".lifemap-map-panel");
+
+    if (treePanel) {
+      treePanel.classList.toggle("hidden", lifeMapViewMode !== "tree");
+    }
+
+    if (mapPanel) {
+      mapPanel.classList.toggle("hidden", lifeMapViewMode === "tree");
+    }
+
+    const viewButton = $("lifeMapViewToggle");
+    if (viewButton) {
+      viewButton.setAttribute(
+        "aria-pressed",
+        String(lifeMapViewMode === "tree"),
+      );
+    }
+
+    const connectButton = $("lifeMapConnectMode");
+    if (connectButton) {
+      connectButton.setAttribute(
+        "aria-pressed",
+        String(!!lifeMapConnectSourceId),
+      );
+    }
+  }
+
   function switchPage(page) {
     document
       .querySelectorAll(".nav button")
@@ -2448,6 +3088,395 @@
       }
     });
   }
+
+  // ============================================================
+  // LIFE MAP — PART 2: UI EVENTS AND INTERACTIONS
+  // ============================================================
+
+  function lifeMapSelectNode(id) {
+    lifeMapSelectedId = id;
+    renderLifeMap();
+  }
+
+  function lifeMapStartNewNode(type = "goal") {
+    const canvas = $("lifeMapCanvas");
+    const node = lifeMapCreateNode({
+      name: "New " + lifeMapTypeLabel(type),
+      type,
+      x: Math.max(25, (canvas?.clientWidth || 700) / 2 - 95),
+      y: Math.max(25, (canvas?.clientHeight || 500) / 2 - 45),
+    });
+
+    lifeMapSelectedId = node.id;
+    lifeMapViewMode = "map";
+    renderLifeMap();
+
+    $("lifeMapNodeName")?.focus();
+    $("lifeMapNodeName")?.select();
+  }
+
+  function lifeMapApplySearch() {
+    const query = ($("lifeMapSearch")?.value || "").trim().toLowerCase();
+
+    document.querySelectorAll("[data-lm-node]").forEach((el) => {
+      const node = lifeMapNodeById(el.dataset.lmNode);
+      const matches =
+        !query ||
+        (node &&
+          `${node.name} ${node.description} ${lifeMapTypeLabel(node.type)}`
+            .toLowerCase()
+            .includes(query));
+
+      el.classList.toggle("search-dim", !!query && !matches);
+      el.classList.toggle("search-match", !!query && !!matches);
+    });
+
+    document.querySelectorAll("#lifeMapTree [data-lm-select]").forEach((el) => {
+      const node = lifeMapNodeById(el.dataset.lmSelect);
+      const matches =
+        !query ||
+        (node &&
+          `${node.name} ${node.description} ${lifeMapTypeLabel(node.type)}`
+            .toLowerCase()
+            .includes(query));
+
+      el.classList.toggle("hidden", !!query && !matches);
+    });
+  }
+
+  function lifeMapFitView() {
+    const nodes = lifeMapData().nodes;
+    const canvas = $("lifeMapCanvas");
+
+    if (!canvas || !nodes.length) {
+      lifeMapZoom = 1;
+      lifeMapPanX = 0;
+      lifeMapPanY = 0;
+      lifeMapApplyViewport();
+      return;
+    }
+
+    const padding = 35;
+    const nodeWidth = 205;
+    const nodeHeight = 105;
+
+    const minX = Math.min(...nodes.map((n) => n.x));
+    const minY = Math.min(...nodes.map((n) => n.y));
+    const maxX = Math.max(...nodes.map((n) => n.x + nodeWidth));
+    const maxY = Math.max(...nodes.map((n) => n.y + nodeHeight));
+
+    const contentWidth = Math.max(1, maxX - minX);
+    const contentHeight = Math.max(1, maxY - minY);
+
+    lifeMapZoom = Math.max(
+      0.35,
+      Math.min(
+        1.2,
+        (canvas.clientWidth - padding * 2) / contentWidth,
+        (canvas.clientHeight - padding * 2) / contentHeight,
+      ),
+    );
+
+    lifeMapPanX =
+      (canvas.clientWidth - contentWidth * lifeMapZoom) / 2 -
+      minX * lifeMapZoom;
+
+    lifeMapPanY =
+      (canvas.clientHeight - contentHeight * lifeMapZoom) / 2 -
+      minY * lifeMapZoom;
+
+    lifeMapApplyViewport();
+  }
+
+  function bindLifeMapEvents() {
+    const canvas = $("lifeMapCanvas");
+    const nodesHost = $("lifeMapNodes");
+    const treeHost = $("lifeMapTree");
+    const form = $("lifeMapNodeForm");
+
+    if (!canvas || !nodesHost || !form) return;
+
+    // New node buttons
+    $("lifeMapNewNode")?.addEventListener("click", () => {
+      lifeMapStartNewNode($("lifeMapNodeType")?.value || "goal");
+    });
+
+    $("lifeMapEmptyCreate")?.addEventListener("click", () => {
+      lifeMapStartNewNode("goal");
+    });
+
+    // Save node
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const id = $("lifeMapNodeId").value;
+      const name = $("lifeMapNodeName").value.trim();
+
+      if (!name) {
+        notify("Node-এর নাম লিখো।");
+        $("lifeMapNodeName").focus();
+        return;
+      }
+
+      const node = lifeMapNodeById(id);
+      if (!node) {
+        notify("Node পাওয়া যায়নি। আবার তৈরি করো।");
+        return;
+      }
+
+      const updates = {
+        name,
+        type: $("lifeMapNodeType").value,
+        status: $("lifeMapNodeStatus").value,
+        parentId: $("lifeMapParent").value || null,
+        description: $("lifeMapNodeDescription").value.trim(),
+      };
+
+      if (!lifeMapSaveNode(id, updates)) return;
+
+      renderLifeMap();
+      notify("Node সেভ হয়েছে।");
+    });
+
+    // Cancel selection/editing
+    $("lifeMapCancelEdit")?.addEventListener("click", () => {
+      lifeMapSelectedId = null;
+      renderLifeMap();
+    });
+
+    // Delete node and its connections
+    $("lifeMapDeleteNode")?.addEventListener("click", () => {
+      const node = lifeMapNodeById(lifeMapSelectedId);
+      if (!node) return;
+
+      if (
+        !confirm(
+          `"${node.name}" মুছে ফেলবে? এর সঙ্গে থাকা Connections-ও মুছে যাবে। Child Nodes থাকবে, তবে তাদের Parent সরানো হবে।`,
+        )
+      ) {
+        return;
+      }
+
+      lifeMapDeleteNodeById(node.id);
+      renderLifeMap();
+      notify("Node মুছে ফেলা হয়েছে।");
+    });
+
+    // Connect mode toggle
+    $("lifeMapConnectMode")?.addEventListener("click", () => {
+      if (lifeMapConnectSourceId) {
+        lifeMapConnectSourceId = null;
+        notify("Connect mode বন্ধ হয়েছে।");
+      } else {
+        lifeMapConnectSourceId = "__choose_first__";
+        notify("প্রথমে একটি Node, তারপর দ্বিতীয় Node নির্বাচন করো।");
+      }
+
+      renderLifeMap();
+    });
+
+    // Select a node or connect two nodes
+    nodesHost.addEventListener("click", (event) => {
+      const el = event.target.closest("[data-lm-node]");
+      if (!el) return;
+
+      const id = el.dataset.lmNode;
+
+      if (lifeMapConnectSourceId === "__choose_first__") {
+        lifeMapConnectSourceId = id;
+        lifeMapSelectedId = id;
+        renderLifeMap();
+        notify("এবার যে Node-এর সঙ্গে সংযোগ করবে সেটি নির্বাচন করো।");
+        return;
+      }
+
+      if (lifeMapConnectSourceId) {
+        const sourceId = lifeMapConnectSourceId;
+        const relation = $("lifeMapRelationType")?.value || "related";
+
+        if (sourceId === id) {
+          notify("অন্য একটি Node নির্বাচন করো।");
+          return;
+        }
+
+        const success = lifeMapConnectNodes(sourceId, id, relation);
+        lifeMapConnectSourceId = null;
+        lifeMapSelectedId = id;
+        renderLifeMap();
+
+        if (success) notify("দুটি Node-এর মধ্যে Connection তৈরি হয়েছে।");
+        return;
+      }
+
+      lifeMapSelectNode(id);
+    });
+
+    nodesHost.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const el = event.target.closest("[data-lm-node]");
+      if (!el) return;
+
+      event.preventDefault();
+      el.click();
+    });
+
+    // Tree / List selection
+    treeHost?.addEventListener("click", (event) => {
+      const el = event.target.closest("[data-lm-select]");
+      if (!el) return;
+      lifeMapSelectNode(el.dataset.lmSelect);
+    });
+
+    treeHost?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const el = event.target.closest("[data-lm-select]");
+      if (!el) return;
+
+      event.preventDefault();
+      lifeMapSelectNode(el.dataset.lmSelect);
+    });
+
+    // Remove a non-hierarchical connection
+    $("lifeMapConnectionList")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-lm-disconnect]");
+      if (!button) return;
+
+      lifeMapDisconnect(button.dataset.lmDisconnect);
+      renderLifeMap();
+      notify("Connection সরানো হয়েছে।");
+    });
+
+    // Search
+    $("lifeMapSearch")?.addEventListener("input", lifeMapApplySearch);
+
+    // Zoom controls
+    $("lifeMapZoomIn")?.addEventListener("click", () => {
+      lifeMapZoom = Math.min(2, lifeMapZoom + 0.1);
+      lifeMapApplyViewport();
+    });
+
+    $("lifeMapZoomOut")?.addEventListener("click", () => {
+      lifeMapZoom = Math.max(0.35, lifeMapZoom - 0.1);
+      lifeMapApplyViewport();
+    });
+
+    $("lifeMapFitView")?.addEventListener("click", lifeMapFitView);
+
+    // Map <-> Tree/List view
+    $("lifeMapViewToggle")?.addEventListener("click", () => {
+      lifeMapViewMode = lifeMapViewMode === "map" ? "tree" : "map";
+      renderLifeMap();
+    });
+
+    // Drag nodes and pan the canvas.
+    // Positions are stored in the same Life Map state.
+    canvas.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+
+      const nodeEl = event.target.closest("[data-lm-node]");
+      const node = nodeEl ? lifeMapNodeById(nodeEl.dataset.lmNode) : null;
+
+      if (node) {
+        lifeMapDrag = {
+          kind: "node",
+          id: node.id,
+          startX: event.clientX,
+          startY: event.clientY,
+          originX: node.x,
+          originY: node.y,
+          moved: false,
+        };
+      } else {
+        lifeMapDrag = {
+          kind: "pan",
+          startX: event.clientX,
+          startY: event.clientY,
+          originX: lifeMapPanX,
+          originY: lifeMapPanY,
+          moved: false,
+        };
+      }
+
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch (_) {}
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (!lifeMapDrag) return;
+
+      const dx = event.clientX - lifeMapDrag.startX;
+      const dy = event.clientY - lifeMapDrag.startY;
+
+      if (Math.abs(dx) + Math.abs(dy) > 3) {
+        lifeMapDrag.moved = true;
+      }
+
+      if (lifeMapDrag.kind === "node") {
+        const node = lifeMapNodeById(lifeMapDrag.id);
+        const element = nodesHost.querySelector(
+          `[data-lm-node="${CSS.escape(lifeMapDrag.id)}"]`,
+        );
+
+        if (!node || !element) return;
+
+        node.x = Math.max(10, lifeMapDrag.originX + dx / lifeMapZoom);
+        node.y = Math.max(10, lifeMapDrag.originY + dy / lifeMapZoom);
+
+        element.style.left = `${node.x}px`;
+        element.style.top = `${node.y}px`;
+
+        lifeMapRenderEdges();
+      } else {
+        lifeMapPanX = lifeMapDrag.originX + dx;
+        lifeMapPanY = lifeMapDrag.originY + dy;
+        lifeMapApplyViewport();
+      }
+    });
+
+    function finishLifeMapPointer(event) {
+      if (!lifeMapDrag) return;
+
+      const drag = lifeMapDrag;
+      lifeMapDrag = null;
+
+      try {
+        if (canvas.hasPointerCapture(event.pointerId)) {
+          canvas.releasePointerCapture(event.pointerId);
+        }
+      } catch (_) {}
+
+      if (drag.kind === "node" && drag.moved) {
+        persist();
+        lifeMapRenderEdges();
+      }
+    }
+
+    canvas.addEventListener("pointerup", finishLifeMapPointer);
+    canvas.addEventListener("pointercancel", finishLifeMapPointer);
+
+    // Keyboard zoom shortcuts only while the map canvas is focused.
+    canvas.addEventListener("keydown", (event) => {
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        lifeMapZoom = Math.min(2, lifeMapZoom + 0.1);
+        lifeMapApplyViewport();
+      } else if (event.key === "-") {
+        event.preventDefault();
+        lifeMapZoom = Math.max(0.35, lifeMapZoom - 0.1);
+        lifeMapApplyViewport();
+      } else if (event.key === "Escape" && lifeMapConnectSourceId) {
+        lifeMapConnectSourceId = null;
+        renderLifeMap();
+      }
+    });
+
+    // Recalculate connection lines when the canvas size changes.
+    window.addEventListener("resize", () => {
+      lifeMapRenderEdges();
+      lifeMapApplyViewport();
+    });
+  }
   function tick() {
     const f = state.focus;
     if (f.running) {
@@ -2643,6 +3672,7 @@
     if (!$("manualDate").value) $("manualDate").value = localDate();
     renderSelects();
     bindEvents();
+    bindLifeMapEvents();
     syncThemeButton();
     resetPresetForm();
     resetReminderForm();
@@ -2652,6 +3682,7 @@
       { name: "Break", minutes: 5 },
     ]);
     renderAll();
+    renderLifeMap();
     setInterval(tick, 500);
   }
   window.lifeOSApp = {

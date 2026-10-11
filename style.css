@@ -1406,3 +1406,791 @@ tbody tr:last-child td {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ============================================================
+   LIFE MAP — Connected Map, Node Types, Inspector & Tree View
+   ============================================================ */
+
+.lifemap-page {
+  --lm-purple: #7c3aed;
+  --lm-blue: #2563eb;
+  --lm-green: #059669;
+  --lm-orange: #d97706;
+  --lm-red: #dc2626;
+  --lm-cyan: #0891b2;
+
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.lifemap-page * {
+  min-width: 0;
+}
+
+.lifemap-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lifemap-header h2 {
+  margin: 0 0 6px;
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.lifemap-header p {
+  max-width: 680px;
+  margin: 0;
+  line-height: 1.65;
+}
+
+.lifemap-header-actions,
+.lifemap-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lifemap-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+}
+
+.lifemap-toolbar-group input[type="search"] {
+  width: 190px;
+  max-width: 100%;
+}
+
+.lifemap-toolbar-group select {
+  width: auto;
+  max-width: 220px;
+}
+
+.lifemap-toolbar button {
+  min-height: 38px;
+}
+
+#lifeMapConnectMode[aria-pressed="true"],
+#lifeMapViewToggle[aria-pressed="true"] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.lifemap-zoom-label {
+  min-width: 46px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Main workspace */
+
+.lifemap-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  align-items: start;
+  gap: 16px;
+}
+
+.lifemap-map-panel,
+.lifemap-tree-panel,
+.lifemap-inspector {
+  min-width: 0;
+  padding: 18px;
+}
+
+.lifemap-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.lifemap-panel-heading h3 {
+  margin: 0 0 5px;
+}
+
+.lifemap-panel-heading p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.lifemap-panel-heading .pill {
+  flex-shrink: 0;
+}
+
+/* Canvas */
+
+.lifemap-canvas {
+  position: relative;
+  width: 100%;
+  height: min(72vh, 760px);
+  min-height: 520px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background-color: var(--panel-2);
+  background-image: radial-gradient(
+    var(--line-strong) 0.8px,
+    transparent 0.8px
+  );
+  background-size: 22px 22px;
+  cursor: grab;
+  outline: none;
+  touch-action: pan-y;
+}
+
+.lifemap-canvas:focus-visible {
+  box-shadow: var(--ring);
+}
+
+.lifemap-canvas:active {
+  cursor: grabbing;
+}
+
+html[data-theme="dark"] .lifemap-canvas {
+  background-image: radial-gradient(
+    rgba(143, 160, 189, 0.3) 0.8px,
+    transparent 0.8px
+  );
+}
+
+.lifemap-edges,
+.lifemap-nodes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.lifemap-edges {
+  z-index: 1;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.lifemap-nodes {
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Connection lines */
+
+.lifemap-edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 2;
+  opacity: 0.9;
+  vector-effect: non-scaling-stroke;
+}
+
+.lifemap-edge[data-relation="hierarchy"] {
+  stroke: var(--lm-purple);
+  stroke-width: 2.4;
+}
+
+.lifemap-edge[data-relation="supports"] {
+  stroke: var(--green);
+}
+
+.lifemap-edge[data-relation="blocks"] {
+  stroke: var(--danger);
+  stroke-dasharray: 7 5;
+}
+
+.lifemap-edge[data-relation="addresses"] {
+  stroke: var(--lm-blue);
+}
+
+.lifemap-edge[data-relation="depends"] {
+  stroke: var(--lm-orange);
+  stroke-dasharray: 5 4;
+}
+
+.lifemap-edge[data-relation="tests"] {
+  stroke: var(--lm-cyan);
+  stroke-dasharray: 3 4;
+}
+
+.lifemap-edge[data-relation="related"] {
+  stroke: var(--muted);
+  stroke-dasharray: 2 5;
+}
+
+.lifemap-edge-label {
+  fill: var(--muted);
+  font-family: var(--font);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+
+/* Node cards.
+   JavaScript can position these using left/top or transform. */
+
+.lifemap-node {
+  position: absolute;
+  width: 190px;
+  max-width: 220px;
+  padding: 12px 13px;
+  border: 1.5px solid var(--line-strong);
+  border-left: 4px solid var(--muted);
+  border-radius: 13px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.09);
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  overflow-wrap: anywhere;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.lifemap-node:hover {
+  border-color: var(--accent);
+  box-shadow: 0 8px 22px rgba(79, 70, 229, 0.14);
+  z-index: 5;
+}
+
+.lifemap-node.selected {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--accent-soft),
+    0 9px 24px rgba(79, 70, 229, 0.16);
+  z-index: 6;
+}
+
+.lifemap-node.connect-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+}
+
+.lifemap-node-name {
+  display: block;
+  margin: 5px 0 7px;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.lifemap-node-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.lifemap-node-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.lifemap-node-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  color: var(--muted);
+  background: var(--panel-2);
+  font-size: 10px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.lifemap-node-description {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Type-specific node appearance */
+
+.lifemap-node[data-type="goal"] {
+  border-left-color: var(--lm-purple);
+  background: var(--panel);
+}
+
+.lifemap-node[data-type="goal"] .lifemap-node-type {
+  color: var(--lm-purple);
+}
+
+.lifemap-node[data-type="step"] {
+  border-left-color: var(--lm-blue);
+}
+
+.lifemap-node[data-type="step"] .lifemap-node-type {
+  color: var(--lm-blue);
+}
+
+.lifemap-node[data-type="barrier"] {
+  border-left-color: var(--danger);
+  background: var(--panel);
+}
+
+.lifemap-node[data-type="barrier"] .lifemap-node-type {
+  color: var(--danger);
+}
+
+.lifemap-node[data-type="loop"] {
+  border-left-color: var(--lm-orange);
+  border-left-style: dashed;
+}
+
+.lifemap-node[data-type="loop"] .lifemap-node-type {
+  color: var(--lm-orange);
+}
+
+.lifemap-node[data-type="belief"] {
+  border-left-color: #db2777;
+  border-left-style: double;
+}
+
+.lifemap-node[data-type="belief"] .lifemap-node-type {
+  color: #db2777;
+}
+
+.lifemap-node[data-type="skill-gap"] {
+  border-left-color: var(--lm-cyan);
+}
+
+.lifemap-node[data-type="skill-gap"] .lifemap-node-type {
+  color: var(--lm-cyan);
+}
+
+.lifemap-node[data-type="condition"] {
+  border-left-color: var(--muted);
+  border-left-style: dashed;
+}
+
+.lifemap-node[data-type="condition"] .lifemap-node-type {
+  color: var(--muted);
+}
+
+.lifemap-node[data-type="measure"] {
+  border-left-color: var(--green);
+  border-radius: 18px;
+}
+
+.lifemap-node[data-type="measure"] .lifemap-node-type {
+  color: var(--green);
+}
+
+.lifemap-node[data-type="action"] {
+  border-left-color: var(--green);
+}
+
+.lifemap-node[data-type="action"] .lifemap-node-type {
+  color: var(--green);
+}
+
+.lifemap-node[data-type="research"] {
+  border-left-color: var(--lm-cyan);
+}
+
+.lifemap-node[data-type="research"] .lifemap-node-type {
+  color: var(--lm-cyan);
+}
+
+.lifemap-node[data-type="decision"] {
+  border-left-color: var(--lm-purple);
+  border-left-style: double;
+}
+
+.lifemap-node[data-type="decision"] .lifemap-node-type {
+  color: var(--lm-purple);
+}
+
+.lifemap-node[data-type="experiment"] {
+  border-left-color: var(--lm-orange);
+}
+
+.lifemap-node[data-type="experiment"] .lifemap-node-type {
+  color: var(--lm-orange);
+}
+
+/* Status-based appearance */
+
+.lifemap-node[data-status="done"],
+.lifemap-node[data-status="achieved"],
+.lifemap-node[data-status="resolved"] {
+  background: var(--green-bg);
+  border-color: var(--green-line);
+}
+
+.lifemap-node[data-status="done"] .lifemap-node-status,
+.lifemap-node[data-status="achieved"] .lifemap-node-status,
+.lifemap-node[data-status="resolved"] .lifemap-node-status {
+  color: var(--green);
+  border-color: var(--green-line);
+  background: var(--green-bg);
+}
+
+.lifemap-node[data-status="in-progress"],
+.lifemap-node[data-status="active"] {
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
+}
+
+.lifemap-node[data-status="tested"] {
+  border-style: dashed;
+}
+
+.lifemap-node[data-status="observed"] {
+  background: var(--panel-2);
+}
+
+/* Empty state */
+
+.lifemap-empty {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+  background: color-mix(in srgb, var(--panel-2) 90%, transparent);
+}
+
+.lifemap-empty h3 {
+  margin: 12px 0 6px;
+  font-size: 17px;
+}
+
+.lifemap-empty p {
+  max-width: 380px;
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.lifemap-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 24px;
+}
+
+.lifemap-map-footer {
+  padding-top: 12px;
+  line-height: 1.6;
+}
+
+/* Inspector / form */
+
+.lifemap-inspector {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.lifemap-inspector .field {
+  gap: 6px;
+}
+
+.lifemap-inspector .field > label {
+  font-size: 12px;
+}
+
+.lifemap-inspector input,
+.lifemap-inspector select,
+.lifemap-inspector textarea {
+  font-size: 13px;
+}
+
+.lifemap-inspector textarea {
+  line-height: 1.6;
+}
+
+.lifemap-inspector .tiny {
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.lifemap-no-selection {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 22px 8px;
+  text-align: center;
+}
+
+.lifemap-no-selection p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.lifemap-form-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lifemap-form-actions button {
+  flex: 1;
+}
+
+.lifemap-divider {
+  height: 1px;
+  margin: 8px 0;
+  background: var(--line);
+}
+
+/* Connection list */
+
+.lifemap-relationships {
+  display: grid;
+  gap: 10px;
+}
+
+.lifemap-connection-list {
+  display: grid;
+  gap: 8px;
+}
+
+.lifemap-connection-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel-2);
+}
+
+.lifemap-connection-item strong {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.lifemap-connection-item small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.lifemap-connection-item button {
+  flex-shrink: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+/* Tree / List alternative */
+
+.lifemap-tree-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.lifemap-tree {
+  display: grid;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.lifemap-tree-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.lifemap-tree-item:hover {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.lifemap-tree-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.lifemap-tree-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.lifemap-tree-item strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lifemap-tree-item small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.lifemap-tree-children {
+  display: grid;
+  gap: 8px;
+  margin-left: 16px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line-strong);
+}
+
+.lifemap-tree-empty {
+  padding: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Search result highlighting */
+
+.lifemap-node.search-match {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
+
+.lifemap-node.search-dim {
+  opacity: 0.22;
+}
+
+/* Responsive layout */
+
+@media (max-width: 1180px) {
+  .lifemap-workspace {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+
+  .lifemap-map-panel,
+  .lifemap-tree-panel,
+  .lifemap-inspector {
+    padding: 15px;
+  }
+
+  .lifemap-toolbar {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .lifemap-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lifemap-inspector {
+    position: static;
+  }
+
+  .lifemap-canvas {
+    height: 65vh;
+    min-height: 480px;
+  }
+}
+
+@media (max-width: 600px) {
+  .lifemap-header h2 {
+    font-size: 22px;
+  }
+
+  .lifemap-header-actions {
+    width: 100%;
+  }
+
+  .lifemap-header-actions button {
+    width: 100%;
+  }
+
+  .lifemap-toolbar {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .lifemap-toolbar-group {
+    width: 100%;
+  }
+
+  .lifemap-toolbar-group input[type="search"] {
+    flex: 1;
+    width: auto;
+  }
+
+  .lifemap-toolbar-group select {
+    flex: 1;
+    width: 100%;
+    max-width: none;
+  }
+
+  .lifemap-map-panel,
+  .lifemap-tree-panel,
+  .lifemap-inspector {
+    padding: 12px;
+    border-radius: 17px;
+  }
+
+  .lifemap-canvas {
+    height: 60vh;
+    min-height: 430px;
+  }
+
+  .lifemap-node {
+    width: 165px;
+    padding: 10px;
+  }
+
+  .lifemap-node-name {
+    font-size: 12px;
+  }
+
+  .lifemap-empty {
+    padding: 18px;
+  }
+}

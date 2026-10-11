@@ -348,6 +348,25 @@
             </span>
             <span class="nav-label">Action Library</span>
           </button>
+          <button data-page="lifemap">
+            <span class="nav-ico" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="5" cy="6" r="2" />
+                <circle cx="19" cy="5" r="2" />
+                <circle cx="12" cy="19" r="2" />
+                <circle cx="19" cy="15" r="2" />
+                <path d="M7 6.1 17 5.2M6.2 7.8l4.7 9.4M14 18l3.5-2" />
+              </svg>
+            </span>
+            <span class="nav-label">Life Map</span>
+          </button>
           <button data-page="review">
             <span class="nav-ico" aria-hidden="true">
               <svg
@@ -993,7 +1012,287 @@
               </article>
             </div>
           </section>
+          <!-- ============ LIFE MAP ============ -->
+          <section id="page-lifemap" class="page">
+            <div class="lifemap-page">
+              <!-- Page Header -->
+              <div class="lifemap-header">
+                <div>
+                  <h2>Life Map</h2>
+                  <p class="muted">
+                    তোমার Goals, Steps, Barriers, Beliefs এবং তাদের পারস্পরিক
+                    সম্পর্ক একটি Connected Map-এ সাজাও।
+                  </p>
+                </div>
 
+                <div class="lifemap-header-actions">
+                  <button id="lifeMapNewNode" class="primary" type="button">
+                    + New Node
+                  </button>
+                </div>
+              </div>
+
+              <!-- Main Toolbar -->
+              <article class="card lifemap-toolbar">
+                <div class="lifemap-toolbar-group">
+                  <input
+                    id="lifeMapSearch"
+                    type="search"
+                    placeholder="নোড খুঁজো..."
+                    aria-label="Search Life Map nodes"
+                  />
+
+                  <button id="lifeMapFitView" type="button">Fit Map</button>
+                </div>
+
+                <div class="lifemap-toolbar-group">
+                  <button
+                    id="lifeMapConnectMode"
+                    type="button"
+                    aria-pressed="false"
+                  >
+                    Connect Nodes
+                  </button>
+
+                  <select id="lifeMapRelationType" aria-label="Connection type">
+                    <option value="hierarchy">Parent / Child</option>
+                    <option value="supports">Supports</option>
+                    <option value="blocks">Blocks</option>
+                    <option value="addresses">Addresses</option>
+                    <option value="depends">Depends on</option>
+                    <option value="tests">Tests</option>
+                    <option value="related">Related to</option>
+                  </select>
+                </div>
+
+                <div class="lifemap-toolbar-group">
+                  <button
+                    id="lifeMapZoomOut"
+                    type="button"
+                    aria-label="Zoom out"
+                  >
+                    −
+                  </button>
+
+                  <span id="lifeMapZoomLevel" class="lifemap-zoom-label">
+                    100%
+                  </span>
+
+                  <button id="lifeMapZoomIn" type="button" aria-label="Zoom in">
+                    +
+                  </button>
+
+                  <button
+                    id="lifeMapViewToggle"
+                    type="button"
+                    aria-pressed="false"
+                  >
+                    Tree / List
+                  </button>
+                </div>
+              </article>
+
+              <!-- Main Workspace -->
+              <div class="lifemap-workspace">
+                <!-- Visual Map -->
+                <article class="card lifemap-map-panel">
+                  <div class="lifemap-panel-heading">
+                    <div>
+                      <h3>Connected Map</h3>
+                      <p class="muted tiny">
+                        নোড নির্বাচন করো, নতুন নোড তৈরি করো, এবং তাদের মধ্যে
+                        সম্পর্ক তৈরি করো।
+                      </p>
+                    </div>
+
+                    <span id="lifeMapNodeCount" class="pill"> 0 Nodes </span>
+                  </div>
+
+                  <div
+                    id="lifeMapCanvas"
+                    class="lifemap-canvas"
+                    tabindex="0"
+                    role="region"
+                    aria-label="Interactive Life Map canvas"
+                  >
+                    <svg
+                      id="lifeMapEdges"
+                      class="lifemap-edges"
+                      aria-hidden="true"
+                    ></svg>
+
+                    <div id="lifeMapNodes" class="lifemap-nodes"></div>
+
+                    <div id="lifeMapEmpty" class="lifemap-empty">
+                      <div class="lifemap-empty-icon">✦</div>
+                      <h3>তোমার Life Map শুরু করো</h3>
+                      <p class="muted">
+                        প্রথমে একটি Goal তৈরি করো। তারপর তার অধীনে Step,
+                        Barrier, Belief বা অন্য নোড যোগ করো। প্রয়োজনে অন্য
+                        Goal-এর সঙ্গে সংযোগ তৈরি করো।
+                      </p>
+                      <button
+                        id="lifeMapEmptyCreate"
+                        class="primary"
+                        type="button"
+                      >
+                        + প্রথম Goal তৈরি করো
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="lifemap-map-footer">
+                    <span class="muted tiny">
+                      Tip: Connect Nodes চালু করে দুটি নোড নির্বাচন করলে তাদের
+                      মধ্যে সম্পর্ক তৈরি করা যাবে।
+                    </span>
+                  </div>
+                </article>
+
+                <!-- Tree / List View -->
+                <article
+                  id="lifeMapTreePanel"
+                  class="card lifemap-tree-panel hidden"
+                >
+                  <div class="lifemap-panel-heading">
+                    <div>
+                      <h3>Hierarchy / List</h3>
+                      <p class="muted tiny">
+                        একই নোডের তথ্য Tree / List আকারে দেখো।
+                      </p>
+                    </div>
+                  </div>
+
+                  <div id="lifeMapTree" class="lifemap-tree"></div>
+                </article>
+
+                <!-- Selected Node Inspector -->
+                <aside id="lifeMapInspector" class="card lifemap-inspector">
+                  <div class="lifemap-panel-heading">
+                    <div>
+                      <h3 id="lifeMapInspectorTitle">Node Details</h3>
+                      <p class="muted tiny">
+                        নির্বাচিত নোডের তথ্য ও Status পরিচালনা করো।
+                      </p>
+                    </div>
+                  </div>
+
+                  <div id="lifeMapNoSelection" class="lifemap-no-selection">
+                    <div class="lifemap-empty-icon">◇</div>
+                    <p class="muted">
+                      কোনো নোড নির্বাচন করা হয়নি। নতুন নোড তৈরি করো অথবা Map
+                      থেকে একটি নোড নির্বাচন করো।
+                    </p>
+                  </div>
+
+                  <form id="lifeMapNodeForm" class="stack hidden">
+                    <input type="hidden" id="lifeMapNodeId" />
+
+                    <div class="field">
+                      <label for="lifeMapNodeName"> Node Name </label>
+                      <input
+                        id="lifeMapNodeName"
+                        required
+                        maxlength="180"
+                        placeholder="যেমন: চুলের Direction ঠিক করা"
+                      />
+                    </div>
+
+                    <div class="field">
+                      <label for="lifeMapNodeType"> Primary Type </label>
+                      <select id="lifeMapNodeType" required>
+                        <option value="goal">Goal</option>
+                        <option value="step">Step</option>
+                        <option value="barrier">Barrier</option>
+                        <option value="loop">Loop</option>
+                        <option value="belief">Belief</option>
+                        <option value="skill-gap">Skill Gap</option>
+                        <option value="condition">Condition</option>
+                        <option value="measure">Measure</option>
+                        <option value="action">Action</option>
+                        <option value="research">Research</option>
+                        <option value="decision">Decision</option>
+                        <option value="experiment">Experiment</option>
+                      </select>
+                    </div>
+
+                    <div class="field">
+                      <label for="lifeMapNodeStatus"> Status </label>
+                      <select id="lifeMapNodeStatus">
+                        <option value="not-started">Not started</option>
+                        <option value="in-progress">In progress</option>
+                        <option value="done">Done</option>
+                        <option value="active">Active</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="observed">Observed</option>
+                        <option value="tested">Tested</option>
+                        <option value="achieved">Achieved</option>
+                      </select>
+                    </div>
+
+                    <div class="field">
+                      <label for="lifeMapParent"> Parent Node (ঐচ্ছিক) </label>
+                      <select id="lifeMapParent">
+                        <option value="">কোনো Parent নেই</option>
+                      </select>
+                      <p class="muted tiny">
+                        Parent নির্ধারণ করলে নোডটি Hierarchy-এর অংশ হবে। অন্য
+                        নোডের সঙ্গে সাধারণ সংযোগের জন্য Connect Nodes ব্যবহার
+                        করো।
+                      </p>
+                    </div>
+
+                    <div class="field">
+                      <label for="lifeMapNodeDescription">
+                        Description / Notes
+                      </label>
+                      <textarea
+                        id="lifeMapNodeDescription"
+                        rows="4"
+                        maxlength="5000"
+                        placeholder="এই নোডটি কী বোঝায়? কী পর্যবেক্ষণ করেছ?"
+                      ></textarea>
+                    </div>
+
+                    <div class="lifemap-form-actions">
+                      <button
+                        id="lifeMapSaveNode"
+                        class="primary"
+                        type="submit"
+                      >
+                        Save Node
+                      </button>
+
+                      <button id="lifeMapCancelEdit" type="button">
+                        Cancel
+                      </button>
+                    </div>
+
+                    <button id="lifeMapDeleteNode" class="danger" type="button">
+                      Delete Node
+                    </button>
+                  </form>
+
+                  <!-- Selected Node Relationships -->
+                  <div
+                    id="lifeMapRelationships"
+                    class="lifemap-relationships hidden"
+                  >
+                    <div class="lifemap-divider"></div>
+
+                    <div class="lifemap-panel-heading">
+                      <h3>Connections</h3>
+                    </div>
+
+                    <div
+                      id="lifeMapConnectionList"
+                      class="lifemap-connection-list"
+                    ></div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </section>
           <!-- ============ SETTINGS ============ -->
           <section id="page-settings" class="page">
             <div class="grid">
