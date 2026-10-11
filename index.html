@@ -1698,7 +1698,8 @@
             </span>
             <span class="nav-label">Today</span>
           </button>
-          <button data-page="actions">
+
+          <button data-page="tracking">
             <span class="nav-ico" aria-hidden="true">
               <svg
                 viewBox="0 0 24 24"
@@ -1708,13 +1709,28 @@
                 stroke-linecap="round"
                 stroke-linejoin="round"
               >
-                <rect x="3.2" y="3.6" width="7.4" height="7.4" rx="2.2" />
-                <rect x="13.4" y="3.6" width="7.4" height="7.4" rx="2.2" />
-                <rect x="3.2" y="13.8" width="7.4" height="7.4" rx="2.2" />
-                <rect x="13.4" y="13.8" width="7.4" height="7.4" rx="2.2" />
+                <circle cx="12" cy="12.6" r="8.2" />
+                <path d="M12 8.1v4.7l3.2 1.9" />
+                <path d="M9.4 3.1h5.2" />
               </svg>
             </span>
-            <span class="nav-label">Action Library</span>
+            <span class="nav-label">Time Tracking</span>
+          </button>
+          <button data-page="focus">
+            <span class="nav-ico" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3.2 2" />
+              </svg>
+            </span>
+            <span class="nav-label">Focus Mode</span>
           </button>
           <button data-page="reminders">
             <span class="nav-ico" aria-hidden="true">
@@ -1733,7 +1749,7 @@
             <span class="nav-label">Reminders</span>
             <span class="nav-badge hidden" id="reminderNavBadge">0</span>
           </button>
-          <button data-page="tracking">
+          <button data-page="actions">
             <span class="nav-ico" aria-hidden="true">
               <svg
                 viewBox="0 0 24 24"
@@ -1743,12 +1759,13 @@
                 stroke-linecap="round"
                 stroke-linejoin="round"
               >
-                <circle cx="12" cy="12.6" r="8.2" />
-                <path d="M12 8.1v4.7l3.2 1.9" />
-                <path d="M9.4 3.1h5.2" />
+                <rect x="3.2" y="3.6" width="7.4" height="7.4" rx="2.2" />
+                <rect x="13.4" y="3.6" width="7.4" height="7.4" rx="2.2" />
+                <rect x="3.2" y="13.8" width="7.4" height="7.4" rx="2.2" />
+                <rect x="13.4" y="13.8" width="7.4" height="7.4" rx="2.2" />
               </svg>
             </span>
-            <span class="nav-label">Time Tracking</span>
+            <span class="nav-label">Action Library</span>
           </button>
           <button data-page="review">
             <span class="nav-ico" aria-hidden="true">
@@ -1885,57 +1902,6 @@
                     Start / Switch
                   </button>
                   <button id="stopTrackingBtn">Stop</button>
-                </div>
-              </article>
-
-              <article class="card span12">
-                <div class="sectionhead">
-                  <div>
-                    <h2>Focus Mode</h2>
-                    <div class="tiny">টাইম ট্র্যাকিং থেকে সম্পূর্ণ আলাদা</div>
-                  </div>
-                </div>
-
-                <div class="field focus-preset">
-                  <label for="focusPreset">Saved focus session</label>
-                  <select id="focusPreset"></select>
-                </div>
-
-                <div class="timerface">
-                  <div id="focusTimerName" class="timername">
-                    কোনো সেশন চালু নেই
-                  </div>
-                  <div id="focusTime" class="timebig">00:00</div>
-                  <div id="focusStatus" class="timerstatus muted">
-                    Session বেছে নিয়ে Start করো
-                  </div>
-                  <div class="row focus-controls">
-                    <button class="primary" id="focusStart">Start</button>
-                    <button id="focusPause">Pause</button>
-                    <button id="focusStop">Stop</button>
-                    <button id="focusNext">Next phase</button>
-                    <button id="focusPiPBtn" title="Mini floating timer">
-                      ⧉ Timer
-                    </button>
-                  </div>
-                </div>
-
-                <div id="focusAlert" class="notice hidden"></div>
-                <div id="dashboardPhaseEditor" class="stack"></div>
-
-                <div class="row focus-save">
-                  <button id="newFocusSession">+ New session</button>
-                  <button id="saveFocusSession" class="primary">
-                    Save session
-                  </button>
-                </div>
-
-                <div class="field hidden" id="focusNameWrap">
-                  <label for="dashboardFocusName">Session name</label>
-                  <input
-                    id="dashboardFocusName"
-                    placeholder="যেমন: Exercise 50 min + Break 10 min"
-                  />
                 </div>
               </article>
             </div>
@@ -2485,6 +2451,62 @@
                     Reset করলে এই ব্রাউজারের Life OS ডেটা মুছে যাবে। আগে Export
                     করে রাখো।
                   </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <!-- ============ FOCUS MODE ============ -->
+          <section id="page-focus" class="page">
+            <div class="grid">
+              <article class="card span12">
+                <div class="sectionhead">
+                  <div>
+                    <h2>Focus Mode</h2>
+                    <div class="tiny">টাইম ট্র্যাকিং থেকে সম্পূর্ণ আলাদা</div>
+                  </div>
+                </div>
+
+                <div class="field focus-preset">
+                  <label for="focusPreset">Saved focus session</label>
+                  <select id="focusPreset"></select>
+                </div>
+
+                <div class="timerface">
+                  <div id="focusTimerName" class="timername">
+                    কোনো সেশন চালু নেই
+                  </div>
+                  <div id="focusTime" class="timebig">00:00</div>
+                  <div id="focusStatus" class="timerstatus muted">
+                    Session বেছে নিয়ে Start করো
+                  </div>
+                  <div class="row focus-controls">
+                    <button class="primary" id="focusStart">Start</button>
+                    <button id="focusPause">Pause</button>
+                    <button id="focusStop">Stop</button>
+                    <button id="focusNext">Next phase</button>
+                    <button id="focusPiPBtn" title="Mini floating timer">
+                      ⧉ Timer
+                    </button>
+                  </div>
+                </div>
+
+                <div id="focusAlert" class="notice hidden"></div>
+                <div id="dashboardPhaseEditor" class="stack"></div>
+
+                <div class="row focus-save">
+                  <button id="newFocusSession">+ New session</button>
+                  <button id="saveFocusSession" class="primary">
+                    Save session
+                  </button>
+                </div>
+
+                <div class="field hidden" id="focusNameWrap">
+                  <label for="dashboardFocusName">Session name</label>
+                  <input
+                    id="dashboardFocusName"
+                    placeholder="যেমন: Exercise 50 min + Break 10 min"
+                  />
                 </div>
               </article>
             </div>
@@ -3218,7 +3240,6 @@
           persist();
         }
         function switchPage(page) {
-          if (page === "focus") page = "dashboard";
           document
             .querySelectorAll(".nav button")
             .forEach((b) =>
