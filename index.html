@@ -728,6 +728,27 @@
         background: var(--accent-grad);
       }
 
+      .nav button .nav-badge {
+        margin-left: auto;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: var(--accent-grad);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1;
+        box-shadow: 0 6px 14px -6px var(--accent);
+      }
+      .nav button.active .nav-badge {
+        background: var(--accent-strong);
+        box-shadow: none;
+      }
+
       .sidebar-foot {
         margin-top: auto;
         padding: 12px;
@@ -1695,6 +1716,23 @@
             </span>
             <span class="nav-label">Action Library</span>
           </button>
+          <button data-page="reminders">
+            <span class="nav-ico" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+              </svg>
+            </span>
+            <span class="nav-label">Reminders</span>
+            <span class="nav-badge hidden" id="reminderNavBadge">0</span>
+          </button>
           <button data-page="tracking">
             <span class="nav-ico" aria-hidden="true">
               <svg
@@ -2167,6 +2205,130 @@
             </div>
           </section>
 
+          <!-- ============ Reminders ============ -->
+          <section id="page-reminders" class="page">
+            <div class="grid">
+              <article class="card span12">
+                <div class="sectionhead">
+                  <div>
+                    <h2>আজকের Reminders</h2>
+                    <p class="muted tiny" style="margin: 3px 0 0">
+                      Due / Overdue — টিক দিলে পরবর্তী occurrence schedule হবে
+                    </p>
+                  </div>
+                </div>
+                <div id="todayReminders" class="list"></div>
+              </article>
+              <article class="card span5">
+                <h2 id="reminderFormTitle">নতুন Reminder</h2>
+                <form id="reminderForm" class="stack">
+                  <input type="hidden" id="reminderEditId" />
+                  <div class="field">
+                    <label for="reminderName">নাম</label>
+                    <input
+                      id="reminderName"
+                      required
+                      placeholder="যেমন: Shampoo"
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="reminderEmoji">Emoji (ঐচ্ছিক)</label>
+                    <input id="reminderEmoji" placeholder="যেমন: 🧴" />
+                  </div>
+                  <div class="field">
+                    <label for="reminderScheduleType">Schedule ধরন</label>
+                    <select id="reminderScheduleType">
+                      <option value="weekly" selected>
+                        প্রতি সপ্তাহে (নির্দিষ্ট দিনগুলোতে)
+                      </option>
+                      <option value="interval">
+                        প্রতি N সপ্তাহে (একটি নির্দিষ্ট দিনে)
+                      </option>
+                      <option value="once">একবার (নির্দিষ্ট তারিখে)</option>
+                    </select>
+                  </div>
+
+                  <div id="reminderWeeklyWrap" class="field">
+                    <label>কোন কোন দিনে</label>
+                    <div class="row schedule-days">
+                      <label class="checkboxrow"
+                        ><input type="checkbox" value="1" /> সোম</label
+                      >
+                      <label class="checkboxrow"
+                        ><input type="checkbox" value="2" /> মঙ্গল</label
+                      >
+                      <label class="checkboxrow"
+                        ><input type="checkbox" value="3" /> বুধ</label
+                      >
+                      <label class="checkboxrow"
+                        ><input type="checkbox" value="4" /> বৃহস্পতি</label
+                      >
+                      <label class="checkboxrow"
+                        ><input type="checkbox" value="5" /> শুক্র</label
+                      >
+                      <label class="checkboxrow"
+                        ><input type="checkbox" value="6" /> শনি</label
+                      >
+                      <label class="checkboxrow"
+                        ><input type="checkbox" value="0" /> রবি</label
+                      >
+                    </div>
+                  </div>
+
+                  <div id="reminderIntervalWrap" class="field hidden">
+                    <label>প্রতি কত সপ্তাহে</label>
+                    <div class="row" style="flex-wrap: nowrap">
+                      <input
+                        id="reminderWeeks"
+                        type="number"
+                        min="1"
+                        max="52"
+                        value="2"
+                        style="max-width: 90px"
+                      />
+                      <span class="muted tiny">সপ্তাহ</span>
+                      <select id="reminderIntervalDay" style="max-width: 140px">
+                        <option value="0">রবি</option>
+                        <option value="1">সোম</option>
+                        <option value="2">মঙ্গল</option>
+                        <option value="3">বুধ</option>
+                        <option value="4">বৃহস্পতি</option>
+                        <option value="5">শুক্র</option>
+                        <option value="6">শনি</option>
+                      </select>
+                    </div>
+                    <label style="margin-top: 8px" for="reminderAnchor"
+                      >শুরুর তারিখ (anchor)</label
+                    >
+                    <input id="reminderAnchor" type="date" />
+                  </div>
+                  <div id="reminderOnceWrap" class="field hidden">
+                    <label for="reminderOnceDate">তারিখ</label>
+                    <input id="reminderOnceDate" type="date" />
+                    <p class="tiny" style="margin: 0">
+                      এই তারিখে একবারই আসবে; সম্পন্ন করার পর আর রিপিট হবে না।
+                    </p>
+                  </div>
+
+                  <div class="row">
+                    <button class="primary" type="submit">Save Reminder</button>
+                    <button type="button" id="cancelReminderEdit">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </article>
+
+              <article class="card span7">
+                <div class="sectionhead">
+                  <h2>তোমার Reminders</h2>
+                  <span id="reminderCountBadge" class="pill"></span>
+                </div>
+                <div id="reminderList" class="list"></div>
+              </article>
+            </div>
+          </section>
+
           <!-- ============ REVIEW ============ -->
           <section id="page-review" class="page">
             <div class="grid">
@@ -2579,6 +2741,7 @@
             tasks: [],
             logs: [],
             presets: [],
+            reminders: [],
             reviews: {},
             settings: { weekStart: 1 },
             tracking: { activeActionId: null, segmentStart: null },
@@ -2630,6 +2793,13 @@
               dismissed: !!t.dismissed,
               source: t.source || "manual",
             }));
+            data.reminders = (data.reminders || []).map((r) => ({
+              ...r,
+              emoji: r.emoji || "",
+              history: r.history || [],
+              rescheduledFrom: r.rescheduledFrom || null,
+              archived: !!r.archived,
+            }));
             return {
               ...seed(),
               ...data,
@@ -2668,6 +2838,81 @@
         }
         function actionById(id) {
           return state.actions.find((a) => a.id === id);
+        }
+        function reminderById(id) {
+          return state.reminders.find((r) => r.id === id);
+        }
+
+        function computeInitialDueDate(schedule, fromDate) {
+          if (schedule.type === "once") {
+            return schedule.date || null;
+          }
+
+          const from = dateFromISO(fromDate);
+          from.setHours(0, 0, 0, 0);
+
+          if (schedule.type === "weekly") {
+            const days = schedule.days || [];
+            if (!days.length) return null;
+            for (let i = 0; i < 14; i++) {
+              const d = new Date(from);
+              d.setDate(d.getDate() + i);
+              if (days.includes(d.getDay())) return localDate(d);
+            }
+          } else if (schedule.type === "interval") {
+            const weeks = Math.max(1, Number(schedule.weeks) || 1);
+            const anchor = dateFromISO(schedule.anchorDate || localDate());
+            const step = weeks * 7;
+            let cursor = new Date(anchor);
+            cursor.setHours(0, 0, 0, 0);
+            while (cursor < from) cursor.setDate(cursor.getDate() + step);
+            return localDate(cursor);
+          }
+          return null;
+        }
+
+        function computeNextAfter(schedule, afterDate) {
+          if (schedule.type === "once") return null;
+          return computeInitialDueDate(schedule, addDays(afterDate, 1));
+        }
+
+        const DAYS_BN = [
+          "রবি",
+          "সোম",
+          "মঙ্গল",
+          "বুধ",
+          "বৃহস্পতি",
+          "শুক্র",
+          "শনি",
+        ];
+
+        function describeSchedule(schedule) {
+          if (schedule.type === "weekly") {
+            const days = (schedule.days || [])
+              .map((d) => DAYS_BN[d])
+              .join(", ");
+            return `সাপ্তাহিক · ${days || "—"}`;
+          }
+          if (schedule.type === "interval") {
+            return `প্রতি ${schedule.weeks || 1} সপ্তাহে · ${DAYS_BN[schedule.day] || "?"}`;
+          }
+          if (schedule.type === "once") {
+            return `একবার · ${schedule.date || "—"}`;
+          }
+          return "—";
+        }
+
+        function getReminderBuckets(date) {
+          const all = state.reminders.filter((r) => !r.archived);
+          const due = [],
+            overdue = [];
+          all.forEach((r) => {
+            if (!r.nextDueDate) return;
+            if (r.nextDueDate === date) due.push(r);
+            else if (r.nextDueDate < date) overdue.push(r);
+          });
+          overdue.sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
+          return { due, overdue };
         }
         function presetById(id) {
           return state.presets.find((p) => p.id === id);
@@ -2903,6 +3148,75 @@
           renderAll();
           notify("Time Tracking বন্ধ এবং সেভ হয়েছে।");
         }
+        function createReminder({ name, emoji, schedule }) {
+          const first =
+            computeInitialDueDate(schedule, localDate()) || localDate();
+          state.reminders.push({
+            id: uid("rem"),
+            name,
+            emoji: emoji || "",
+            schedule,
+            nextDueDate: first,
+            rescheduledFrom: null,
+            history: [],
+            archived: false,
+            createdAt: nowISO(),
+          });
+          persist();
+          return first;
+        }
+
+        function updateReminder(id, updates) {
+          const r = reminderById(id);
+          if (!r) return;
+          Object.assign(r, updates);
+          if (updates.schedule) {
+            // schedule বদলালে nextDueDate নতুন করে হিসাব করব
+            const base = r.nextDueDate || localDate();
+            r.nextDueDate = computeInitialDueDate(r.schedule, base) || base;
+          }
+          persist();
+        }
+
+        function completeReminder(id) {
+          const r = reminderById(id);
+          if (!r) return;
+          const completedOn = localDate();
+          const scheduledFor = r.nextDueDate || completedOn;
+          const base = scheduledFor > completedOn ? scheduledFor : completedOn;
+          r.history = r.history || [];
+          r.history.push({
+            scheduledDate: scheduledFor,
+            completedAt: nowISO(),
+          });
+          const next = computeNextAfter(r.schedule, base);
+          r.rescheduledFrom = null;
+          if (next) {
+            r.nextDueDate = next;
+            notify(`✓ ${r.name} সম্পন্ন — পরবর্তী: ${next}`);
+          } else {
+            r.nextDueDate = null;
+            r.archived = true;
+            notify(`✓ ${r.name} সম্পন্ন — এই reminder শেষ।`);
+          }
+          persist();
+        }
+
+        function rescheduleReminder(id, newDate) {
+          const r = reminderById(id);
+          if (!r) return;
+          if (!r.rescheduledFrom) r.rescheduledFrom = r.nextDueDate;
+          r.nextDueDate = newDate;
+          persist();
+          notify(`${r.name} → ${newDate} এ সরানো হয়েছে।`);
+        }
+
+        function archiveReminder(id) {
+          const r = reminderById(id);
+          if (!r) return;
+          r.archived = true;
+          persist();
+        }
         function switchPage(page) {
           if (page === "focus") page = "dashboard";
           document
@@ -3094,6 +3408,108 @@
               return `<div class="item"><div class="content"><strong>${escapeHTML(actionEmojiName(a))}</strong><div class="tiny">${escapeHTML(categoryName(a.categoryId))} &middot; Daily ${humanMinutes(a.dailyTarget)}${dismissed ? " &middot; আগে সরানো হয়েছিল" : ""}</div></div><div class="actions"><button class="small primary" data-other-add="${a.id}">${dismissed ? "আবার যোগ" : "Add"}</button></div></div>`;
             })
             .join("");
+        }
+        function reminderItemTodayHtml(r, status) {
+          const emoji = r.emoji ? r.emoji + " " : "";
+          const pill =
+            status === "overdue"
+              ? `<span class="pill red">Overdue · ${escapeHTML(r.nextDueDate)}</span>`
+              : `<span class="pill green">Today</span>`;
+          const resched = r.rescheduledFrom
+            ? ` · rescheduled from ${escapeHTML(r.rescheduledFrom)}`
+            : "";
+          return `<div class="item"><input type="checkbox" aria-label="Mark done" data-reminder-done="${r.id}"><div class="content"><strong>${escapeHTML(emoji + r.name)} ${pill}</strong><div class="tiny">${escapeHTML(describeSchedule(r.schedule))}${resched}</div></div><div class="actions"><button class="small" data-reminder-reschedule="${r.id}">Reschedule</button></div></div>`;
+        }
+
+        function renderTodayReminders() {
+          // ============ Nav badge update (সবসময় আজকের) ============
+          const today = localDate();
+          const { due, overdue } = getReminderBuckets(today);
+          const totalToday = due.length + overdue.length;
+
+          const badge = $("reminderNavBadge");
+          if (badge) {
+            if (totalToday > 0) {
+              badge.textContent = String(totalToday);
+              badge.classList.remove("hidden");
+            } else {
+              badge.textContent = "";
+              badge.classList.add("hidden");
+            }
+          }
+
+          // ============ Top card content ============
+          const host = $("todayReminders");
+          if (!host) return;
+
+          if (!due.length && !overdue.length) {
+            host.innerHTML =
+              '<div class="empty">আজকের জন্য কোনো Reminder নেই। 🎉</div>';
+            return;
+          }
+
+          let html = "";
+          if (overdue.length) {
+            html += `<div class="grouphead">Overdue (${overdue.length})</div>`;
+            html += overdue
+              .map((r) => reminderItemTodayHtml(r, "overdue"))
+              .join("");
+          }
+          if (due.length) {
+            html += `<div class="grouphead"${overdue.length ? ' style="margin-top:14px"' : ""}>আজকের (${due.length})</div>`;
+            html += due.map((r) => reminderItemTodayHtml(r, "due")).join("");
+          }
+          host.innerHTML = html;
+        }
+
+        function renderRemindersList() {
+          const host = $("reminderList");
+          if (!host) return;
+          const all = state.reminders.filter((r) => !r.archived);
+          $("reminderCountBadge").textContent = `${all.length} active`;
+          if (!all.length) {
+            host.innerHTML =
+              '<div class="empty">এখনো কোনো Reminder নেই। বাম পাশ থেকে প্রথমটি তৈরি করো।</div>';
+            return;
+          }
+          const sorted = all
+            .slice()
+            .sort((a, b) =>
+              String(a.nextDueDate || "9999").localeCompare(
+                String(b.nextDueDate || "9999"),
+              ),
+            );
+          host.innerHTML = sorted
+            .map((r) => {
+              const emoji = r.emoji ? r.emoji + " " : "";
+              const today = localDate();
+              let pill;
+              if (r.nextDueDate === today)
+                pill = `<span class="pill green">Today</span>`;
+              else if (r.nextDueDate < today)
+                pill = `<span class="pill red">Overdue · ${escapeHTML(r.nextDueDate)}</span>`;
+              else
+                pill = `<span class="pill">${escapeHTML(r.nextDueDate)}</span>`;
+              return `<div class="item"><div class="content"><strong>${escapeHTML(emoji + r.name)} ${pill}</strong><div class="tiny">${escapeHTML(describeSchedule(r.schedule))}${r.history?.length ? ` · ${r.history.length} বার সম্পন্ন` : ""}</div></div><div class="actions"><button class="small" data-reminder-reschedule="${r.id}">Reschedule</button><button class="small" data-reminder-edit="${r.id}">Edit</button><button class="small danger" data-reminder-archive="${r.id}">Archive</button></div></div>`;
+            })
+            .join("");
+        }
+
+        function resetReminderForm() {
+          $("reminderEditId").value = "";
+          $("reminderFormTitle").textContent = "নতুন Reminder";
+          $("reminderForm").reset();
+          $("reminderScheduleType").value = "weekly";
+          $("reminderWeeklyWrap").classList.remove("hidden");
+          $("reminderIntervalWrap").classList.add("hidden");
+          $("reminderOnceWrap").classList.add("hidden"); // ← নতুন
+          $("reminderOnceDate").value = localDate(); // ← নতুন
+          $("reminderWeeks").value = 2;
+          $("reminderIntervalDay").value = "2";
+          $("reminderAnchor").value = localDate();
+          document
+            .querySelectorAll("#reminderWeeklyWrap .schedule-days input")
+            .forEach((x) => (x.checked = false));
         }
         function openSessionModal(taskId) {
           const t = taskById(taskId);
@@ -3602,6 +4018,8 @@
           renderFocus();
           renderLogs();
           renderReview();
+          renderRemindersList();
+          renderTodayReminders();
           updateLiveNumbers();
         }
         function resetActionForm() {
@@ -4595,6 +5013,155 @@
               }
             }
           });
+          // ============ REMINDERS ============
+          $("reminderScheduleType").addEventListener("change", () => {
+            const v = $("reminderScheduleType").value;
+            $("reminderWeeklyWrap").classList.toggle("hidden", v !== "weekly");
+            $("reminderIntervalWrap").classList.toggle(
+              "hidden",
+              v !== "interval",
+            );
+            $("reminderOnceWrap").classList.toggle("hidden", v !== "once");
+          });
+
+          $("reminderForm").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const editId = $("reminderEditId").value;
+            const name = $("reminderName").value.trim();
+            if (!name) {
+              notify("নাম দাও।");
+              return;
+            }
+            const type = $("reminderScheduleType").value;
+            let schedule;
+
+            if (type === "weekly") {
+              const days = [
+                ...document.querySelectorAll(
+                  "#reminderWeeklyWrap .schedule-days input:checked",
+                ),
+              ].map((x) => Number(x.value));
+              if (!days.length) {
+                notify("কমপক্ষে একটি দিন বেছে নাও।");
+                return;
+              }
+              schedule = { type: "weekly", days };
+            } else if (type === "interval") {
+              const weeks = Math.max(1, Number($("reminderWeeks").value) || 1);
+              const day = Number($("reminderIntervalDay").value);
+              const anchorDate = $("reminderAnchor").value || localDate();
+              schedule = { type: "interval", weeks, day, anchorDate };
+            } else if (type === "once") {
+              const d = $("reminderOnceDate").value;
+              if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+                notify("সঠিক তারিখ দাও।");
+                return;
+              }
+              schedule = { type: "once", date: d };
+            } else {
+              notify("Schedule ধরন সঠিক নয়।");
+              return;
+            }
+
+            const emoji = $("reminderEmoji").value.trim();
+
+            if (editId) {
+              updateReminder(editId, { name, emoji, schedule });
+              notify("Reminder আপডেট হয়েছে।");
+            } else {
+              const first = createReminder({ name, emoji, schedule });
+              notify(`Reminder সেভ হয়েছে — প্রথম due: ${first}`);
+            }
+            resetReminderForm();
+            renderAll();
+          });
+
+          $("cancelReminderEdit").addEventListener("click", resetReminderForm);
+
+          // Today view-এ reminder checkbox
+          $("todayReminders").addEventListener("change", (e) => {
+            const id = e.target.dataset.reminderDone;
+            if (!id) return;
+            completeReminder(id);
+            renderAll();
+          });
+          $("todayReminders").addEventListener("click", (e) => {
+            const b = e.target.closest("[data-reminder-reschedule]");
+            if (!b) return;
+            const r = reminderById(b.dataset.reminderReschedule);
+            if (!r) return;
+            const nd = prompt("নতুন তারিখ (YYYY-MM-DD):", r.nextDueDate);
+            if (!nd || !/^\d{4}-\d{2}-\d{2}$/.test(nd)) return;
+            rescheduleReminder(r.id, nd);
+            renderAll();
+          });
+
+          // Reminders page-এর list
+          $("reminderList").addEventListener("click", (e) => {
+            const b = e.target.closest("button");
+            if (!b) return;
+            const id =
+              b.dataset.reminderEdit ||
+              b.dataset.reminderArchive ||
+              b.dataset.reminderReschedule;
+            if (!id) return;
+            const r = reminderById(id);
+            if (!r) return;
+
+            if (b.dataset.reminderReschedule) {
+              const nd = prompt("নতুন তারিখ (YYYY-MM-DD):", r.nextDueDate);
+              if (!nd || !/^\d{4}-\d{2}-\d{2}$/.test(nd)) return;
+              rescheduleReminder(r.id, nd);
+              renderAll();
+              return;
+            }
+
+            if (b.dataset.reminderEdit) {
+              $("reminderEditId").value = r.id;
+              $("reminderFormTitle").textContent = "Reminder Edit";
+              $("reminderName").value = r.name;
+              $("reminderEmoji").value = r.emoji || "";
+
+              if (r.schedule.type === "weekly") {
+                $("reminderScheduleType").value = "weekly";
+                $("reminderWeeklyWrap").classList.remove("hidden");
+                $("reminderIntervalWrap").classList.add("hidden");
+                $("reminderOnceWrap").classList.add("hidden");
+                document
+                  .querySelectorAll("#reminderWeeklyWrap .schedule-days input")
+                  .forEach(
+                    (x) =>
+                      (x.checked = (r.schedule.days || []).includes(
+                        Number(x.value),
+                      )),
+                  );
+              } else if (r.schedule.type === "interval") {
+                $("reminderScheduleType").value = "interval";
+                $("reminderWeeklyWrap").classList.add("hidden");
+                $("reminderIntervalWrap").classList.remove("hidden");
+                $("reminderOnceWrap").classList.add("hidden");
+                $("reminderWeeks").value = r.schedule.weeks || 2;
+                $("reminderIntervalDay").value = String(r.schedule.day ?? 2);
+                $("reminderAnchor").value =
+                  r.schedule.anchorDate || localDate();
+              } else if (r.schedule.type === "once") {
+                $("reminderScheduleType").value = "once";
+                $("reminderWeeklyWrap").classList.add("hidden");
+                $("reminderIntervalWrap").classList.add("hidden");
+                $("reminderOnceWrap").classList.remove("hidden");
+                $("reminderOnceDate").value = r.schedule.date || localDate();
+              }
+
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }
+
+            if (b.dataset.reminderArchive) {
+              if (confirm(`"${r.name}" archive করবে?`)) {
+                archiveReminder(r.id);
+                renderAll();
+              }
+            }
+          });
           $("themeToggle").addEventListener("click", () => {
             const next =
               document.documentElement.getAttribute("data-theme") === "dark"
@@ -4835,6 +5402,8 @@
           bindEvents();
           syncThemeButton();
           resetPresetForm();
+          resetReminderForm();
+          renderTodayReminders();
           renderDashboardPhaseEditor([
             { name: "Focus", minutes: 25 },
             { name: "Break", minutes: 5 },
