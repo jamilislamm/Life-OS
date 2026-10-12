@@ -630,7 +630,6 @@
   let lifeMapHoverCardTimer = null;
   let lifeMapHoverCardHideTimer = null;
   let lifeMapHoverCardNodeId = null;
-  let lifeMapInspectorClosed = false;
   let lifeMapBulkEditMode = false;
   let lifeMapBulkEditIds = [];
 
@@ -964,100 +963,7 @@
       : '<p class="muted tiny">এই Node-এর সঙ্গে এখনো কোনো সাধারণ Connection নেই।</p>';
   }
 
-  function lifeMapRenderInspector() {
-    const panel = $("lifeMapInspector");
-    const body = $("lifeMapInspectorBody");
-    const title = $("lifeMapInspectorTitle");
-    const actions = $("lifeMapInspectorActions");
-    if (!panel || !body) return;
-
-    if (lifeMapInspectorClosed) {
-      panel.classList.add("hidden");
-      return;
-    }
-    // Only show for exactly one selected node.
-    // Multi-select summary panel has been removed on purpose.
-    if (lifeMapSelectedIds.size !== 1) {
-      panel.classList.add("hidden");
-      return;
-    }
-
-    panel.classList.remove("hidden");
-
-    // Single selection
-    const node =
-      lifeMapNodeById(lifeMapSelectedId) ||
-      lifeMapNodeById([...lifeMapSelectedIds][0]);
-    if (!node) {
-      panel.classList.add("hidden");
-      return;
-    }
-
-    const type = LIFE_MAP_TYPES[node.type] || { label: "Node", icon: "◇" };
-    const parent = node.parentId ? lifeMapNodeById(node.parentId) : null;
-    const connections = lifeMapData().connections.filter(
-      (c) => c.sourceId === node.id || c.targetId === node.id,
-    );
-
-    title.textContent = node.name;
-    title.title = node.name;
-
-    body.innerHTML = `
-      <div class="lifemap-insp-row">
-        <span class="lifemap-insp-pill">
-          ${escapeHTML(type.icon)} ${escapeHTML(type.label)}
-        </span>
-        <span class="lifemap-insp-status" data-status="${escapeHTML(node.status)}">
-          ${escapeHTML(lifeMapStatusLabel(node.status))}
-        </span>
-      </div>
-      ${
-        parent
-          ? `<div class="lifemap-insp-field">
-              <label>Parent</label>
-              <p>${escapeHTML(parent.name)}</p>
-            </div>`
-          : ""
-      }
-      ${
-        node.description
-          ? `<div class="lifemap-insp-field">
-              <label>Description</label>
-              <p>${escapeHTML(node.description)}</p>
-            </div>`
-          : ""
-      }
-      ${
-        connections.length
-          ? `<div class="lifemap-insp-field">
-              <label>Connections (${connections.length})</label>
-              <div class="lifemap-connection-list">
-                ${connections
-                  .map((c) => {
-                    const outgoing = c.sourceId === node.id;
-                    const otherId = outgoing ? c.targetId : c.sourceId;
-                    const other = lifeMapNodeById(otherId);
-                    if (!other) return "";
-                    const dir = outgoing ? "→" : "←";
-                    return `
-                      <div class="lifemap-connection-item">
-                        <div>
-                          <strong>${dir} ${escapeHTML(other.name)}</strong>
-                          <small>${escapeHTML(lifeMapRelationLabel(c.relation))}</small>
-                        </div>
-                        <button type="button" data-lm-disconnect="${escapeHTML(c.id)}">Remove</button>
-                      </div>
-                    `;
-                  })
-                  .join("")}
-              </div>
-            </div>`
-          : ""
-      }
-    `;
-
-    actions?.classList.remove("hidden");
-  }
+  // lifeMapRenderInspector() — removed. Inspector panel disabled site-wide.
 
   /* ============================================================
      HOVER CARD
@@ -1475,7 +1381,6 @@
 
     lifeMapRenderEdges();
     lifeMapRenderTree();
-    lifeMapRenderInspector();
     lifeMapApplyViewport();
 
     const treePanel = $("lifeMapTreePanel");
@@ -1565,10 +1470,10 @@
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
-    lifeMapInspectorClosed = false;
+
     lifeMapViewMode = "map";
     renderLifeMap();
-    notify("Child node তৈরি হয়েছে — Inspector থেকে Edit করো।");
+    notify("Child node তৈরি হয়েছে।");
   }
 
   /* ---------- Type picker ---------- */
@@ -4101,7 +4006,7 @@
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
-    lifeMapInspectorClosed = false;
+
     lifeMapViewMode = "map";
     renderLifeMap();
     notify("New Node তৈরি হয়েছে — Inspector থেকে Edit করো।");
@@ -4834,22 +4739,6 @@
       }, 180);
     });
 
-    /* ---- Inspector close / edit / disconnect ---- */
-    $("lifeMapInspectorClose")?.addEventListener("click", () => {
-      lifeMapInspectorClosed = true;
-      $("lifeMapInspector")?.classList.add("hidden");
-    });
-    $("lifeMapInspectorEdit")?.addEventListener("click", () => {
-      if (lifeMapSelectedId) lifeMapOpenNodeModal(lifeMapSelectedId);
-    });
-    $("lifeMapInspector")?.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-lm-disconnect]");
-      if (!button) return;
-      lifeMapDisconnect(button.dataset.lmDisconnect);
-      renderLifeMap();
-      notify("Connection সরানো হয়েছে।");
-    });
-
     /* ---- Canvas pointerdown ---- */
     canvas.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
@@ -4931,7 +4820,6 @@
         // === Selection logic (IDEA 1) ===
         // User নতুন করে node click করলে inspector আবার খুলে যায়
         if (!lifeMapSelectedIds.has(node.id)) {
-          lifeMapInspectorClosed = false;
         }
         const isAlreadySelected = lifeMapSelectedIds.has(node.id);
 
@@ -4979,7 +4867,7 @@
           lifeMapSelectedIds.clear();
           lifeMapSelectedId = null;
           lifeMapSelectedConnectionId = null;
-          lifeMapInspectorClosed = false;
+
           lifeMapRenderNodeSelection();
           renderLifeMap();
         }
@@ -5095,8 +4983,7 @@
             canvas.releasePointerCapture(event.pointerId);
           }
         } catch (_) {}
-        if (lifeMapSelectedIds.size > 0) lifeMapInspectorClosed = false;
-        lifeMapRenderNodeSelection();
+        if (lifeMapSelectedIds.size > 0) lifeMapRenderNodeSelection();
         renderLifeMap();
         notify(`${lifeMapSelectedIds.size} node selected.`);
         return;
@@ -5168,10 +5055,7 @@
         lifeMapSelectedId = nodeId;
       }
 
-      // Right-click NEVER opens the Inspector panel.
-      lifeMapInspectorClosed = true;
       lifeMapRenderNodeSelection();
-      $("lifeMapInspector")?.classList.add("hidden");
 
       lifeMapOpenContextMenu(nodeId, event.clientX, event.clientY);
     });
@@ -5269,20 +5153,19 @@
       const additive = event.shiftKey || event.ctrlKey || event.metaKey;
       const nodeId = el.dataset.lmSelect;
       const isAlreadySelected = lifeMapSelectedIds.has(nodeId);
-      if (!isAlreadySelected) lifeMapInspectorClosed = false;
-
-      if (additive) {
-        lifeMapSelectNode(nodeId, true);
-      } else if (isAlreadySelected) {
-        lifeMapSelectedId = nodeId;
-        lifeMapRenderNodeSelection();
-      } else if (lifeMapMultiSelectMode) {
-        lifeMapSelectedIds = lifeMapCollectDescendants(nodeId);
-        lifeMapSelectedId = nodeId;
-        lifeMapRenderNodeSelection();
-      } else {
-        lifeMapSelectNode(nodeId, false);
-      }
+      if (!isAlreadySelected)
+        if (additive) {
+          lifeMapSelectNode(nodeId, true);
+        } else if (isAlreadySelected) {
+          lifeMapSelectedId = nodeId;
+          lifeMapRenderNodeSelection();
+        } else if (lifeMapMultiSelectMode) {
+          lifeMapSelectedIds = lifeMapCollectDescendants(nodeId);
+          lifeMapSelectedId = nodeId;
+          lifeMapRenderNodeSelection();
+        } else {
+          lifeMapSelectNode(nodeId, false);
+        }
     });
 
     /* ---- Tree keyboard ---- */
