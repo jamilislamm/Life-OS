@@ -3784,6 +3784,33 @@
         );
       }
     });
+
+    /* ---------- Three-dot dropdown menu behavior ---------- */
+    // Ensures only one action menu is open at a time, closes on
+    // outside click, and closes on Escape — matching standard
+    // dropdown UX across the app.
+    document.addEventListener("click", (e) => {
+      const insideMenu = e.target.closest("details.more-menu");
+      if (!insideMenu) {
+        document
+          .querySelectorAll("details.more-menu[open]")
+          .forEach((d) => d.removeAttribute("open"));
+        return;
+      }
+      const summary = e.target.closest("summary");
+      if (summary && summary.parentElement === insideMenu) {
+        document.querySelectorAll("details.more-menu[open]").forEach((d) => {
+          if (d !== insideMenu) d.removeAttribute("open");
+        });
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      document
+        .querySelectorAll("details.more-menu[open]")
+        .forEach((d) => d.removeAttribute("open"));
+    });
   }
 
   // ============================================================

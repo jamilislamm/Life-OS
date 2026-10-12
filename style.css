@@ -813,7 +813,6 @@ textarea {
 .item:hover {
   border-color: var(--line-strong);
   background: var(--panel);
-  transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
 .item .content {
@@ -833,7 +832,14 @@ textarea {
   align-items: center;
 }
 .item.done {
-  opacity: 0.6;
+  background: var(--panel-2);
+}
+.item.done .content {
+  opacity: 0.65;
+}
+.item.done strong {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
 }
 .item.done strong {
   text-decoration: line-through;
@@ -958,7 +964,7 @@ tbody tr:last-child td {
   position: absolute;
   right: 0;
   top: 36px;
-  z-index: 20;
+  z-index: 50;
   display: grid;
   gap: 5px;
   min-width: 148px;
@@ -968,6 +974,10 @@ tbody tr:last-child td {
   border-radius: 14px;
   box-shadow: var(--shadow-lg);
   animation: popIn 0.18s var(--ease) both;
+}
+.item:has(.more-menu[open]) {
+  position: relative;
+  z-index: 40;
 }
 @keyframes popIn {
   from {
