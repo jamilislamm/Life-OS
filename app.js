@@ -963,25 +963,14 @@
       panel.classList.add("hidden");
       return;
     }
-    if (lifeMapSelectedIds.size === 0) {
+    // Only show for exactly one selected node.
+    // Multi-select summary panel has been removed on purpose.
+    if (lifeMapSelectedIds.size !== 1) {
       panel.classList.add("hidden");
       return;
     }
 
     panel.classList.remove("hidden");
-
-    // Multiple selection — summary
-    if (lifeMapSelectedIds.size > 1) {
-      title.textContent = `${lifeMapSelectedIds.size} nodes selected`;
-      body.innerHTML = `
-        <p class="muted tiny" style="margin:0;line-height:1.6">
-          ${lifeMapSelectedIds.size} nodes selected। এদের যেকোনো একটাতে
-          click-drag করলে পুরো group একসাথে move হবে।
-        </p>
-      `;
-      actions?.classList.add("hidden");
-      return;
-    }
 
     // Single selection
     const node =
@@ -4795,12 +4784,14 @@
         lifeMapSelectedIds.clear();
         lifeMapSelectedIds.add(nodeId);
         lifeMapSelectedId = nodeId;
-        lifeMapInspectorClosed = false;
       } else {
         lifeMapSelectedId = nodeId;
       }
+
+      // Right-click NEVER opens the Inspector panel.
+      lifeMapInspectorClosed = true;
       lifeMapRenderNodeSelection();
-      lifeMapRenderInspector();
+      $("lifeMapInspector")?.classList.add("hidden");
 
       lifeMapOpenContextMenu(nodeId, event.clientX, event.clientY);
     });
