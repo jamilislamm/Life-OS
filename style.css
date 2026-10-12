@@ -3281,7 +3281,7 @@ html[data-theme="dark"] .lifemap-canvas {
 /* ---------- Timer card ---------- */
 .focus-timer-card {
   position: relative;
-  padding: 38px 24px 30px;
+  padding: 38px 24px 22px;
   border-radius: 26px;
   background:
     radial-gradient(

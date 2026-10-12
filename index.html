@@ -1573,7 +1573,7 @@
                     </button>
                   </div>
 
-                  <!-- Timer card -->
+                  <!-- Timer card (controls inside) -->
                   <div class="focus-timer-card">
                     <button
                       id="focusPiPBtn"
@@ -1590,30 +1590,16 @@
                     <div id="focusStatus" class="focus-timer-status">
                       সেশন প্রস্তুত
                     </div>
-                  </div>
-
-                  <!-- Controls row -->
-                  <div class="focus-controls-row">
-                    <button class="primary" id="focusStart">Start</button>
-                    <button id="focusPause">Pause</button>
-                    <button id="focusStop">Stop</button>
-                    <button id="focusPrev">‹ Prev</button>
-                    <button id="focusNext">Next ›</button>
+                    <div class="focus-controls-row">
+                      <button class="primary" id="focusStart">Start</button>
+                      <button id="focusPause">Pause</button>
+                      <button id="focusStop">Stop</button>
+                      <button id="focusPrev">‹ Prev</button>
+                      <button id="focusNext">Next ›</button>
+                    </div>
                   </div>
 
                   <div id="focusAlert" class="notice hidden"></div>
-
-                  <!-- Session name -->
-                  <div class="focus-name-field">
-                    <label for="dashboardFocusName" class="focus-field-label"
-                      >Session name</label
-                    >
-                    <input
-                      id="dashboardFocusName"
-                      placeholder="Session name"
-                      maxlength="120"
-                    />
-                  </div>
 
                   <!-- Phases -->
                   <div class="focus-phases-head">
@@ -1636,6 +1622,18 @@
                     >
                       + Break
                     </button>
+                  </div>
+
+                  <!-- Session name (bottom) -->
+                  <div class="focus-name-field">
+                    <label for="dashboardFocusName" class="focus-field-label"
+                      >Session name</label
+                    >
+                    <input
+                      id="dashboardFocusName"
+                      placeholder="Session name"
+                      maxlength="120"
+                    />
                   </div>
                 </div>
               </article>
