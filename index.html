@@ -1046,17 +1046,19 @@
                     id="lifeMapConnectMode"
                     type="button"
                     aria-pressed="false"
+                    title="Show/hide user connections"
                   >
-                    Connect Nodes
+                    🔗 Connect Mode
                   </button>
-                  <select id="lifeMapRelationType" aria-label="Connection type">
-                    <option value="hierarchy">Parent / Child</option>
+                  <select
+                    id="lifeMapRelationType"
+                    aria-label="Connection type filter"
+                  >
+                    <option value="all">All connections</option>
                     <option value="supports">Supports</option>
                     <option value="blocks">Blocks</option>
-                    <option value="addresses">Addresses</option>
                     <option value="depends">Depends on</option>
-                    <option value="tests">Tests</option>
-                    <option value="related">Related to</option>
+                    <option value="addresses">Addresses</option>
                   </select>
                 </div>
 
@@ -1112,7 +1114,16 @@
                       class="lifemap-edges"
                       aria-hidden="true"
                     ></svg>
+                    <svg
+                      id="lifeMapTempEdges"
+                      class="lifemap-edges lifemap-edges-temp"
+                      aria-hidden="true"
+                    ></svg>
                     <div id="lifeMapNodes" class="lifemap-nodes"></div>
+                    <div
+                      id="lifeMapConnectionDots"
+                      class="lifemap-connection-dots"
+                    ></div>
                     <div id="lifeMapEmpty" class="lifemap-empty">
                       <div class="lifemap-empty-icon">✦</div>
                       <h3>তোমার Life Map শুরু করো</h3>
@@ -1469,6 +1480,37 @@
           <div id="lifeMapConnectionList" class="lifemap-connection-list"></div>
         </div>
       </div>
+    </div>
+    <!-- ===================== LIFE MAP CONTEXT MENU ===================== -->
+    <div
+      id="lifeMapContextMenu"
+      class="lifemap-context-menu hidden"
+      role="menu"
+    ></div>
+
+    <!-- ===================== LIFE MAP TYPE PICKER ===================== -->
+    <div id="lifeMapTypePicker" class="lifemap-type-picker hidden">
+      <div class="lifemap-type-picker-title">Connection type</div>
+      <button type="button" data-conn-type="supports">
+        <span class="lm-tp-dot" data-type="supports"></span>
+        Supports
+        <small>সহায়তা করে</small>
+      </button>
+      <button type="button" data-conn-type="blocks">
+        <span class="lm-tp-dot" data-type="blocks"></span>
+        Blocks
+        <small>বাধা দেয়</small>
+      </button>
+      <button type="button" data-conn-type="depends">
+        <span class="lm-tp-dot" data-type="depends"></span>
+        Depends on
+        <small>নির্ভরশীল</small>
+      </button>
+      <button type="button" data-conn-type="addresses">
+        <span class="lm-tp-dot" data-type="addresses"></span>
+        Addresses
+        <small>সমাধানের দিকে কাজ করে</small>
+      </button>
     </div>
     <!-- ===================== LEGACY (hidden, kept for JS) ===================== -->
     <div id="legacyFocusControls" class="hidden" aria-hidden="true">
