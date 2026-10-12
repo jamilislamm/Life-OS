@@ -149,9 +149,7 @@
       document.getElementById("lifeos-userbar")?.remove();
       const bar = document.createElement("div");
       bar.id = "lifeos-userbar";
-      bar.style.cssText =
-        "position:sticky;top:0;z-index:9999;background:#e8f0ff;color:#18366f;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;font:14px system-ui";
-      bar.innerHTML = `<span>Cloud Sync: <strong>${currentUser.email}</strong></span><button id="lifeos-bar-logout" style="padding:6px 10px;cursor:pointer">Log out</button>`;
+      bar.innerHTML = `<span>Cloud Sync: <strong>${currentUser.email}</strong></span><button id="lifeos-bar-logout" type="button">Log out</button>`;
       document.body.prepend(bar);
       document.getElementById("lifeos-bar-logout").onclick = async () => {
         cloudReady = false;
