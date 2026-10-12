@@ -595,6 +595,7 @@
   let lifeMapSelectedId = null;
   let lifeMapSelectedIds = new Set();
   let lifeMapViewMode = "map";
+  let lifeMapNeedsFit = true;
   let lifeMapZoom = 1;
   let lifeMapPanX = 0;
   let lifeMapPanY = 0;
@@ -1682,9 +1683,16 @@
     if (page === "tracking") renderLogs();
 
     if (page === "lifemap") {
+      const shouldFit = lifeMapNeedsFit;
+      lifeMapNeedsFit = false;
       requestAnimationFrame(() => {
-        lifeMapRenderEdges();
-        lifeMapApplyViewport();
+        requestAnimationFrame(() => {
+          if (shouldFit) lifeMapFitView();
+          else {
+            lifeMapRenderEdges();
+            lifeMapApplyViewport();
+          }
+        });
       });
     }
   }
