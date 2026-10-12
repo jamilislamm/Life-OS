@@ -1528,10 +1528,10 @@
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
+    lifeMapInspectorClosed = false;
     lifeMapViewMode = "map";
     renderLifeMap();
-    lifeMapOpenNodeModal(node.id, true);
-    notify("Child node তৈরি হয়েছে। তথ্য ভরে Save করো।");
+    notify("Child node তৈরি হয়েছে — Inspector থেকে Edit করো।");
   }
 
   /* ---------- Type picker ---------- */
@@ -1647,28 +1647,6 @@
     }
     const lowest = children.reduce((a, b) => (a.y >= b.y ? a : b));
     return { x: lowest.x, y: lowest.y + 150 };
-  }
-
-  function lifeMapAddChild(parentId) {
-    const parent = lifeMapNodeById(parentId);
-    if (!parent) return;
-
-    const pos = lifeMapComputeChildPosition(parent);
-    const node = lifeMapCreateNode({
-      name: "New node",
-      type: "step",
-      parentId: parent.id,
-      x: pos.x,
-      y: pos.y,
-    });
-
-    lifeMapSelectedIds.clear();
-    lifeMapSelectedIds.add(node.id);
-    lifeMapSelectedId = node.id;
-    lifeMapViewMode = "map";
-    renderLifeMap();
-    lifeMapOpenNodeModal(node.id, true);
-    notify("Child node তৈরি হয়েছে। তথ্য ভরে Save করো।");
   }
 
   function switchPage(page) {
@@ -3906,9 +3884,10 @@
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
+    lifeMapInspectorClosed = false;
     lifeMapViewMode = "map";
     renderLifeMap();
-    lifeMapOpenNodeModal(node.id, true);
+    notify("New Node তৈরি হয়েছে — Inspector থেকে Edit করো।");
   }
 
   function lifeMapApplySearch() {
