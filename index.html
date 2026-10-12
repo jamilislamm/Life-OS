@@ -1146,6 +1146,38 @@
                       </button>
                     </div>
                   </div>
+                  <!-- ===================== LIFE MAP MINI INSPECTOR ===================== -->
+                  <aside
+                    id="lifeMapInspector"
+                    class="lifemap-inspector-panel hidden"
+                  >
+                    <div class="lifemap-inspector-head">
+                      <h4 id="lifeMapInspectorTitle">Node</h4>
+                      <button
+                        id="lifeMapInspectorClose"
+                        type="button"
+                        aria-label="Close inspector"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div
+                      id="lifeMapInspectorBody"
+                      class="lifemap-inspector-body"
+                    ></div>
+                    <div
+                      id="lifeMapInspectorActions"
+                      class="lifemap-inspector-actions hidden"
+                    >
+                      <button
+                        id="lifeMapInspectorEdit"
+                        class="primary"
+                        type="button"
+                      >
+                        ✎ Edit Node
+                      </button>
+                    </div>
+                  </aside>
                 </article>
 
                 <article
@@ -1316,6 +1348,12 @@
                   <small>সমাধানের দিকে কাজ করে</small>
                 </button>
               </div>
+
+              <!-- ===================== LIFE MAP HOVER CARD ===================== -->
+              <div
+                id="lifeMapHoverCard"
+                class="lifemap-hover-card hidden"
+              ></div>
 
               <!-- ===================== LIFE MAP CONFIRM MODAL ===================== -->
               <div id="lifeMapConfirmModal" class="modal-overlay hidden">
