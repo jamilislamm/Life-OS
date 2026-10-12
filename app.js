@@ -44,6 +44,18 @@
       r = m % 60;
     return h ? `${h}h ${r}m` : `${r}m`;
   };
+  const humanDHM = (seconds) => {
+    seconds = Math.max(0, Math.floor(seconds || 0));
+    const totalMin = Math.floor(seconds / 60);
+    const d = Math.floor(totalMin / 1440);
+    const h = Math.floor((totalMin % 1440) / 60);
+    const m = totalMin % 60;
+    const parts = [];
+    if (d > 0) parts.push(`${d}d`);
+    if (d > 0 || h > 0) parts.push(`${h}h`);
+    parts.push(`${m}m`);
+    return parts.join(" ");
+  };
   const weekStartDate = (date, startDay) => {
     const d = dateFromISO(date);
     const diff = (d.getDay() - Number(startDay) + 7) % 7;
@@ -2546,11 +2558,11 @@
     }
     const untrackedSec = Math.max(0, stats.elapsedSec - actual);
     const e = $("reviewElapsed");
-    if (e) e.textContent = humanMinutes(stats.elapsedSec / 60);
+    if (e) e.textContent = humanDHM(stats.elapsedSec);
     const u = $("reviewUntracked");
     if (u) u.textContent = humanMinutes(untrackedSec / 60);
     const r = $("reviewRemaining");
-    if (r) r.textContent = humanMinutes(stats.remainingSec / 60);
+    if (r) r.textContent = humanDHM(stats.remainingSec);
     const rec = $("reviewRecorded");
     if (rec) rec.textContent = humanMinutes(actual / 60);
   }
@@ -2585,9 +2597,9 @@
     // New bottom row — week time stats
     const stats = computeWeekTimeStats(start);
     const untrackedSec = Math.max(0, stats.elapsedSec - actual);
-    $("reviewElapsed").textContent = humanMinutes(stats.elapsedSec / 60);
+    $("reviewElapsed").textContent = humanDHM(stats.elapsedSec);
     $("reviewUntracked").textContent = humanMinutes(untrackedSec / 60);
-    $("reviewRemaining").textContent = humanMinutes(stats.remainingSec / 60);
+    $("reviewRemaining").textContent = humanDHM(stats.remainingSec);
 
     // Action table
     $("reviewActionTable").innerHTML =
