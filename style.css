@@ -2791,6 +2791,251 @@ html[data-theme="dark"] .lifemap-canvas {
 }
 
 /* ============================================================
+   LIFE MAP FILTER BAR + POPOVER
+   ============================================================ */
+
+/* Trigger button */
+.lifemap-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.lifemap-filter-btn[aria-expanded="true"] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.lifemap-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-grad);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 4px 10px -4px var(--accent);
+}
+.lifemap-filter-btn[aria-expanded="true"] .lifemap-filter-badge {
+  background: var(--accent-strong);
+  box-shadow: none;
+}
+
+/* Popover shell */
+.lifemap-filter-popover {
+  position: fixed;
+  z-index: 300;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  max-height: min(72vh, 600px);
+  overflow: auto;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: 10px;
+  animation: popIn 0.16s var(--ease) both;
+}
+
+.lifemap-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.lifemap-filter-head strong {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.lifemap-filter-head button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+}
+.lifemap-filter-head button:hover {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+/* Sections */
+.lifemap-filter-section {
+  display: grid;
+  gap: 8px;
+}
+.lifemap-filter-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lifemap-filter-section-label > span {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.lifemap-filter-mini-actions {
+  display: flex;
+  gap: 4px;
+}
+.lifemap-filter-mini-actions button {
+  padding: 3px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  line-height: 1;
+}
+.lifemap-filter-mini-actions button:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+/* Item grid (2 columns) */
+.lifemap-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+.lifemap-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+  transition:
+    background 0.14s var(--ease),
+    border-color 0.14s var(--ease),
+    color 0.14s var(--ease);
+}
+.lifemap-filter-item:hover {
+  border-color: var(--line-strong);
+  background: var(--panel);
+}
+.lifemap-filter-item.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.lifemap-filter-item input[type="checkbox"] {
+  display: none;
+}
+.lifemap-filter-item-icon {
+  font-size: 13px;
+  line-height: 1;
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+.lifemap-filter-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* AND / OR segmented toggle */
+.lifemap-filter-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.lifemap-filter-mode button {
+  padding: 8px 12px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  transition:
+    background 0.14s var(--ease),
+    color 0.14s var(--ease);
+}
+.lifemap-filter-mode button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.lifemap-filter-mode button[aria-pressed="true"] {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: none;
+}
+.lifemap-filter-mode button[aria-pressed="true"]:hover {
+  background: var(--accent-grad);
+  filter: brightness(1.06);
+}
+
+/* Footer */
+.lifemap-filter-foot {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.lifemap-filter-clear {
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger-line);
+}
+.lifemap-filter-clear:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+/* Tree view dim styling */
+.lifemap-tree-item.search-dim {
+  opacity: 0.28;
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .lifemap-filter-popover {
+    width: calc(100vw - 24px);
+    max-width: none;
+    max-height: 68vh;
+  }
+}
+
+/* ============================================================
    FLOATING TIME TRACKING WIDGET
    ============================================================ */
 

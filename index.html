@@ -1034,6 +1034,33 @@
                     placeholder="নোড খুঁজো..."
                     aria-label="Search Life Map nodes"
                   />
+                  <button
+                    id="lifeMapFilterBtn"
+                    class="lifemap-filter-btn"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="13"
+                      height="13"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 5h18M6 12h12M10 19h4" />
+                    </svg>
+                    <span>Filter</span>
+                    <span
+                      id="lifeMapFilterBadge"
+                      class="lifemap-filter-badge hidden"
+                      >0</span
+                    >
+                  </button>
                   <button id="lifeMapFitView" type="button">Fit Map</button>
                 </div>
 
@@ -1347,6 +1374,97 @@
                   Addresses
                   <small>সমাধানের দিকে কাজ করে</small>
                 </button>
+              </div>
+
+              <!-- ===================== LIFE MAP FILTER POPOVER ===================== -->
+              <div
+                id="lifeMapFilterPopover"
+                class="lifemap-filter-popover hidden"
+                role="dialog"
+                aria-label="Node filter"
+              >
+                <div class="lifemap-filter-head">
+                  <strong>Filter Nodes</strong>
+                  <button
+                    type="button"
+                    id="lifeMapFilterClose"
+                    aria-label="Close filter"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div class="lifemap-filter-section">
+                  <div class="lifemap-filter-section-label">
+                    <span>Types</span>
+                    <div class="lifemap-filter-mini-actions">
+                      <button type="button" data-filter-action="types-all">
+                        All
+                      </button>
+                      <button type="button" data-filter-action="types-clear">
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    id="lifeMapFilterTypes"
+                    class="lifemap-filter-grid"
+                  ></div>
+                </div>
+
+                <div class="lifemap-filter-section">
+                  <div class="lifemap-filter-section-label">
+                    <span>Status</span>
+                    <div class="lifemap-filter-mini-actions">
+                      <button type="button" data-filter-action="status-all">
+                        All
+                      </button>
+                      <button type="button" data-filter-action="status-clear">
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    id="lifeMapFilterStatuses"
+                    class="lifemap-filter-grid"
+                  ></div>
+                </div>
+
+                <div class="lifemap-filter-section">
+                  <div class="lifemap-filter-section-label">
+                    <span>Match mode</span>
+                  </div>
+                  <div
+                    class="lifemap-filter-mode"
+                    role="radiogroup"
+                    aria-label="Match mode"
+                  >
+                    <button
+                      type="button"
+                      data-filter-mode="and"
+                      aria-pressed="true"
+                    >
+                      AND
+                    </button>
+                    <button
+                      type="button"
+                      data-filter-mode="or"
+                      aria-pressed="false"
+                    >
+                      OR
+                    </button>
+                  </div>
+                </div>
+
+                <div class="lifemap-filter-foot">
+                  <button
+                    type="button"
+                    id="lifeMapFilterClearAll"
+                    class="lifemap-filter-clear"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
               </div>
 
               <!-- ===================== LIFE MAP HOVER CARD ===================== -->

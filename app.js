@@ -1485,6 +1485,10 @@
     if (connectButton) {
       connectButton.setAttribute("aria-pressed", String(lifeMapConnectionMode));
     }
+
+    // Re-apply active filter after DOM rebuild so pan/click/selection
+    // changes never silently wipe the user's filter state.
+    lifeMapApplyFilter();
   }
 
   /* ---------- Modal helpers ---------- */
@@ -4050,32 +4054,235 @@
     notify("New Node তৈরি হয়েছে — Inspector থেকে Edit করো।");
   }
 
-  function lifeMapApplySearch() {
+  /* ---------- Life Map filter state ---------- */
+  let lifeMapFilterTypes = new Set();
+  let lifeMapFilterStatuses = new Set();
+  let lifeMapFilterMode = "and";
+
+  const LIFEMAP_ALL_STATUSES = [
+    "not-started",
+    "in-progress",
+    "done",
+    "active",
+    "resolved",
+    "observed",
+    "tested",
+    "achieved",
+  ];
+
+  function lifeMapRenderFilterPopover() {
+    const typesHost = $("lifeMapFilterTypes");
+    const statusesHost = $("lifeMapFilterStatuses");
+    if (!typesHost || !statusesHost) return;
+
+    typesHost.innerHTML = Object.entries(LIFE_MAP_TYPES)
+      .map(([key, def]) => {
+        const on = lifeMapFilterTypes.has(key);
+        return `<label class="lifemap-filter-item${on ? " selected" : ""}">
+          <input type="checkbox" value="${escapeHTML(key)}" data-filter-type${on ? " checked" : ""}>
+          <span class="lifemap-filter-item-icon">${escapeHTML(def.icon)}</span>
+          <span class="lifemap-filter-item-label">${escapeHTML(def.label)}</span>
+        </label>`;
+      })
+      .join("");
+
+    statusesHost.innerHTML = LIFEMAP_ALL_STATUSES.map((key) => {
+      const on = lifeMapFilterStatuses.has(key);
+      return `<label class="lifemap-filter-item${on ? " selected" : ""}">
+        <input type="checkbox" value="${escapeHTML(key)}" data-filter-status${on ? " checked" : ""}>
+        <span class="lifemap-filter-item-label">${escapeHTML(lifeMapStatusLabel(key))}</span>
+      </label>`;
+    }).join("");
+
+    const badge = $("lifeMapFilterBadge");
+    if (badge) {
+      const total = lifeMapFilterTypes.size + lifeMapFilterStatuses.size;
+      if (total > 0) {
+        badge.textContent = String(total);
+        badge.classList.remove("hidden");
+      } else {
+        badge.textContent = "0";
+        badge.classList.add("hidden");
+      }
+    }
+
+    const btn = $("lifeMapFilterBtn");
+    if (btn) {
+      const any = lifeMapFilterTypes.size > 0 || lifeMapFilterStatuses.size > 0;
+      btn.classList.toggle("active", any);
+    }
+
+    document
+      .querySelectorAll("#lifeMapFilterPopover [data-filter-mode]")
+      .forEach((b) => {
+        b.setAttribute(
+          "aria-pressed",
+          String(b.dataset.filterMode === lifeMapFilterMode),
+        );
+      });
+  }
+
+  function lifeMapMatchesFilter(node) {
+    if (!node) return false;
+
     const query = ($("lifeMapSearch")?.value || "").trim().toLowerCase();
+    const hasType = lifeMapFilterTypes.size > 0;
+    const hasStatus = lifeMapFilterStatuses.size > 0;
+    const hasFilter = hasType || hasStatus;
+
+    // 1) Name search — always AND-ed (independent of type/status mode)
+    if (query) {
+      const hay =
+        `${node.name} ${node.description} ${lifeMapTypeLabel(node.type)}`.toLowerCase();
+      if (!hay.includes(query)) return false;
+    }
+
+    // 2) No type/status filter — search alone decides
+    if (!hasFilter) return true;
+
+    const typeOk = !hasType || lifeMapFilterTypes.has(node.type);
+    const statusOk = !hasStatus || lifeMapFilterStatuses.has(node.status);
+
+    if (lifeMapFilterMode === "and") {
+      return typeOk && statusOk;
+    }
+    // OR mode
+    if (hasType && hasStatus) return typeOk || statusOk;
+    if (hasType) return typeOk;
+    if (hasStatus) return statusOk;
+    return true;
+  }
+
+  function lifeMapApplyFilter() {
+    const query = ($("lifeMapSearch")?.value || "").trim();
+    const hasFilter =
+      lifeMapFilterTypes.size > 0 || lifeMapFilterStatuses.size > 0 || !!query;
+
+    let matchCount = 0;
+    const totalCount = lifeMapData().nodes.length;
 
     document.querySelectorAll("[data-lm-node]").forEach((el) => {
       const node = lifeMapNodeById(el.dataset.lmNode);
-      const matches =
-        !query ||
-        (node &&
-          `${node.name} ${node.description} ${lifeMapTypeLabel(node.type)}`
-            .toLowerCase()
-            .includes(query));
-
-      el.classList.toggle("search-dim", !!query && !matches);
-      el.classList.toggle("search-match", !!query && !!matches);
+      const matches = lifeMapMatchesFilter(node);
+      if (matches) matchCount++;
+      el.classList.toggle("search-dim", hasFilter && !matches);
+      el.classList.toggle("search-match", hasFilter && matches);
     });
 
     document.querySelectorAll("#lifeMapTree [data-lm-select]").forEach((el) => {
       const node = lifeMapNodeById(el.dataset.lmSelect);
-      const matches =
-        !query ||
-        (node &&
-          `${node.name} ${node.description} ${lifeMapTypeLabel(node.type)}`
-            .toLowerCase()
-            .includes(query));
+      const matches = lifeMapMatchesFilter(node);
+      el.classList.toggle("search-dim", hasFilter && !matches);
+    });
 
-      el.classList.toggle("hidden", !!query && !matches);
+    const count = $("lifeMapNodeCount");
+    if (count) {
+      if (hasFilter) {
+        count.textContent = `${matchCount} / ${totalCount} Nodes`;
+      } else {
+        count.textContent = `${totalCount} Node${totalCount === 1 ? "" : "s"}`;
+      }
+    }
+  }
+
+  function bindLifeMapFilterEvents() {
+    const btn = $("lifeMapFilterBtn");
+    const pop = $("lifeMapFilterPopover");
+    if (!btn || !pop) return;
+
+    const open = () => {
+      pop.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      // Position below the button, right-aligned
+      const rect = btn.getBoundingClientRect();
+      const pw = pop.offsetWidth;
+      const ph = pop.offsetHeight;
+      let left = rect.right - pw;
+      let top = rect.bottom + 8;
+      if (left < 8) left = 8;
+      if (top + ph > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - ph - 8);
+      }
+      pop.style.left = left + "px";
+      pop.style.top = top + "px";
+      lifeMapRenderFilterPopover();
+    };
+
+    const close = () => {
+      pop.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+    };
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (pop.classList.contains("hidden")) open();
+      else close();
+    });
+
+    $("lifeMapFilterClose")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      close();
+    });
+
+    pop.addEventListener("change", (e) => {
+      const t = e.target;
+      if (t.matches("[data-filter-type]")) {
+        if (t.checked) lifeMapFilterTypes.add(t.value);
+        else lifeMapFilterTypes.delete(t.value);
+        lifeMapRenderFilterPopover();
+        lifeMapApplyFilter();
+      } else if (t.matches("[data-filter-status]")) {
+        if (t.checked) lifeMapFilterStatuses.add(t.value);
+        else lifeMapFilterStatuses.delete(t.value);
+        lifeMapRenderFilterPopover();
+        lifeMapApplyFilter();
+      }
+    });
+
+    pop.addEventListener("click", (e) => {
+      const modeBtn = e.target.closest("[data-filter-mode]");
+      if (modeBtn) {
+        lifeMapFilterMode = modeBtn.dataset.filterMode;
+        lifeMapRenderFilterPopover();
+        lifeMapApplyFilter();
+        return;
+      }
+      const actionBtn = e.target.closest("[data-filter-action]");
+      if (actionBtn) {
+        const action = actionBtn.dataset.filterAction;
+        if (action === "types-all") {
+          Object.keys(LIFE_MAP_TYPES).forEach((k) => lifeMapFilterTypes.add(k));
+        } else if (action === "types-clear") {
+          lifeMapFilterTypes.clear();
+        } else if (action === "status-all") {
+          LIFEMAP_ALL_STATUSES.forEach((k) => lifeMapFilterStatuses.add(k));
+        } else if (action === "status-clear") {
+          lifeMapFilterStatuses.clear();
+        }
+        lifeMapRenderFilterPopover();
+        lifeMapApplyFilter();
+      }
+    });
+
+    $("lifeMapFilterClearAll")?.addEventListener("click", () => {
+      lifeMapFilterTypes.clear();
+      lifeMapFilterStatuses.clear();
+      lifeMapFilterMode = "and";
+      const s = $("lifeMapSearch");
+      if (s) s.value = "";
+      lifeMapRenderFilterPopover();
+      lifeMapApplyFilter();
+    });
+
+    document.addEventListener("pointerdown", (e) => {
+      if (pop.classList.contains("hidden")) return;
+      if (!pop.contains(e.target) && !btn.contains(e.target)) close();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !pop.classList.contains("hidden")) {
+        close();
+      }
     });
   }
 
@@ -4982,7 +5189,7 @@
       if (btn)
         btn.textContent = document.fullscreenElement
           ? "✕ Exit Fullscreen"
-          : "⛶ Fullscreen";
+          : "⛶";
       if (typeof lifeMapRelocatePopups === "function") lifeMapRelocatePopups();
       requestAnimationFrame(() => {
         lifeMapRenderEdges();
@@ -5059,8 +5266,9 @@
       notify("Connection সরানো হয়েছে।");
     });
 
-    /* ---- Search ---- */
-    $("lifeMapSearch")?.addEventListener("input", lifeMapApplySearch);
+    /* ---- Search / Filter ---- */
+    $("lifeMapSearch")?.addEventListener("input", lifeMapApplyFilter);
+    bindLifeMapFilterEvents();
 
     /* ---- Keyboard zoom ---- */
     canvas.addEventListener("keydown", (event) => {
