@@ -1619,11 +1619,10 @@ html[data-theme="dark"] .lifemap-canvas {
   opacity: 0.85;
 }
 .lifemap-edge[data-relation="hierarchy"].dimmed {
-  stroke: var(--muted);
-  stroke-dasharray: 2 7;
-  stroke-width: 1.4;
-  opacity: 0.28;
-  marker-end: none;
+  stroke: var(--lm-purple);
+  stroke-dasharray: 5 5;
+  stroke-width: 2;
+  opacity: 0.55;
 }
 
 /* Supports: solid green */
@@ -2521,4 +2520,80 @@ html[data-theme="dark"] .lifemap-canvas {
   .lifemap-empty {
     padding: 18px;
   }
+}
+/* ============================================================
+   LIFE MAP FULLSCREEN (real Fullscreen API)
+   ============================================================ */
+.lifemap-page:fullscreen {
+  padding: 12px;
+  background: var(--bg);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  width: 100vw;
+  height: 100vh;
+}
+.lifemap-page:fullscreen .lifemap-header h2 {
+  font-size: 20px;
+}
+.lifemap-page:fullscreen .lifemap-header p {
+  display: none;
+}
+.lifemap-page:fullscreen .lifemap-workspace {
+  min-height: 0;
+  overflow: hidden;
+  grid-template-columns: minmax(0, 1fr);
+}
+.lifemap-page:fullscreen .lifemap-map-panel,
+.lifemap-page:fullscreen .lifemap-tree-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+}
+.lifemap-page:fullscreen .lifemap-panel-heading {
+  flex-shrink: 0;
+}
+.lifemap-page:fullscreen .lifemap-canvas {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+.lifemap-page:fullscreen .lifemap-map-footer {
+  flex-shrink: 0;
+}
+.lifemap-page:fullscreen .lifemap-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+/* Fullscreen-এ popup গুলো উপরে রাখতে z-index boost */
+.lifemap-page:fullscreen #lifeMapNodeModal,
+.lifemap-page:fullscreen #lifeMapContextMenu,
+.lifemap-page:fullscreen #lifeMapTypePicker {
+  z-index: 1000;
+}
+/* ============================================================
+   LIFE MAP CONFIRM MODAL
+   ============================================================ */
+.modal.lifemap-confirm-modal {
+  max-width: 440px;
+}
+.lifemap-confirm-message {
+  margin: 0 0 18px;
+  color: var(--muted);
+  line-height: 1.65;
+  font-size: 13.5px;
+}
+.lifemap-confirm-modal .lifemap-form-actions {
+  justify-content: flex-end;
+}
+.lifemap-confirm-modal .lifemap-form-actions button {
+  flex: 0 0 auto;
+  min-width: 100px;
+}
+.lifemap-page:fullscreen #lifeMapConfirmModal {
+  z-index: 1000;
 }

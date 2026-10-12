@@ -3501,6 +3501,70 @@
     lifeMapApplyViewport();
   }
 
+  /* ============================================================
+     LIFE MAP CONFIRM
+     ------------------------------------------------------------
+     window.confirm() browser-native dialog — এটা fullscreen mode
+     থেকে বের করে দেয়। তাই custom modal ব্যবহার করছি।
+     Returns Promise<boolean>।
+     ============================================================ */
+  let lifeMapConfirmResolver = null;
+
+  function lifeMapConfirm(message, opts = {}) {
+    return new Promise((resolve) => {
+      const modal = $("lifeMapConfirmModal");
+      if (!modal) {
+        // Fallback (কখনো normal-এ এখানে আসবে না)
+        resolve(window.confirm(message));
+        return;
+      }
+      $("lifeMapConfirmTitle").textContent = opts.title || "Confirm";
+      $("lifeMapConfirmMessage").textContent = message;
+      const okBtn = $("lifeMapConfirmOk");
+      okBtn.textContent = opts.okLabel || "Delete";
+      okBtn.classList.toggle("danger", opts.danger !== false);
+
+      // Resolve any pending confirm first
+      if (lifeMapConfirmResolver) {
+        const prev = lifeMapConfirmResolver;
+        lifeMapConfirmResolver = null;
+        prev(false);
+      }
+      lifeMapConfirmResolver = resolve;
+      modal.classList.remove("hidden");
+      setTimeout(() => okBtn.focus(), 40);
+    });
+  }
+
+  function lifeMapResolveConfirm(result) {
+    if (!lifeMapConfirmResolver) return;
+    const r = lifeMapConfirmResolver;
+    lifeMapConfirmResolver = null;
+    $("lifeMapConfirmModal")?.classList.add("hidden");
+    r(result);
+  }
+
+  function lifeMapRelocatePopups() {
+    const page = document.querySelector(".lifemap-page");
+    if (!page) return;
+
+    const popups = [
+      $("lifeMapNodeModal"),
+      $("lifeMapContextMenu"),
+      $("lifeMapTypePicker"),
+      $("lifeMapConfirmModal"),
+    ].filter(Boolean);
+
+    const inFullscreen = document.fullscreenElement === page;
+    const targetParent = inFullscreen ? page : document.body;
+
+    popups.forEach((p) => {
+      if (p.parentNode !== targetParent) {
+        targetParent.appendChild(p);
+      }
+    });
+  }
+
   function bindLifeMapEvents() {
     const canvas = $("lifeMapCanvas");
     const nodesHost = $("lifeMapNodes");
@@ -3510,6 +3574,18 @@
     const modal = $("lifeMapNodeModal");
     const contextMenu = $("lifeMapContextMenu");
     const typePicker = $("lifeMapTypePicker");
+    const confirmModal = $("lifeMapConfirmModal");
+
+    // Confirm modal bindings
+    $("lifeMapConfirmOk")?.addEventListener("click", () =>
+      lifeMapResolveConfirm(true),
+    );
+    $("lifeMapConfirmCancel")?.addEventListener("click", () =>
+      lifeMapResolveConfirm(false),
+    );
+    confirmModal?.addEventListener("click", (e) => {
+      if (e.target === confirmModal) lifeMapResolveConfirm(false);
+    });
 
     if (!canvas || !nodesHost || !form) return;
 
@@ -3562,15 +3638,14 @@
       if (e.target === modal) lifeMapCloseNodeModal();
     });
 
-    $("lifeMapDeleteNode")?.addEventListener("click", () => {
+    $("lifeMapDeleteNode")?.addEventListener("click", async () => {
       const node = lifeMapNodeById(lifeMapSelectedId);
       if (!node) return;
-      if (
-        !confirm(
-          `"${node.name}" মুছে ফেলবে? এর সঙ্গে থাকা Connections-ও মুছে যাবে।`,
-        )
-      )
-        return;
+      const ok = await lifeMapConfirm(
+        `"${node.name}" মুছে ফেলবে? এর সঙ্গে থাকা Connections-ও মুছে যাবে।`,
+        { title: "Delete Node", okLabel: "Delete" },
+      );
+      if (!ok) return;
       lifeMapDeleteNodeById(node.id);
       lifeMapCloseNodeModal();
       renderLifeMap();
@@ -3647,7 +3722,7 @@
     });
 
     /* ---- Context menu action clicks ---- */
-    contextMenu?.addEventListener("click", (event) => {
+    contextMenu?.addEventListener("click", async (event) => {
       const btn = event.target.closest("[data-ctx-action]");
       if (!btn) return;
       const action = btn.dataset.ctxAction;
@@ -3670,11 +3745,11 @@
         notify("Status আপডেট হয়েছে।");
       } else if (action === "delete") {
         lifeMapCloseContextMenu();
-        if (
-          confirm(
-            `"${node.name}" মুছে ফেলবে? এর সঙ্গে থাকা Connections-ও মুছে যাবে।`,
-          )
-        ) {
+        const ok = await lifeMapConfirm(
+          `"${node.name}" মুছে ফেলবে? এর সঙ্গে থাকা Connections-ও মুছে যাবে।`,
+          { title: "Delete Node", okLabel: "Delete" },
+        );
+        if (ok) {
           lifeMapDeleteNodeById(node.id);
           renderLifeMap();
           notify("Node মুছে ফেলা হয়েছে।");
@@ -3695,6 +3770,17 @@
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
+        // Confirm modal open থাকলে সেটা আগে বন্ধ করি
+        if (lifeMapConfirmResolver) {
+          event.stopImmediatePropagation();
+          lifeMapResolveConfirm(false);
+          return;
+        }
+        if (document.fullscreenElement) {
+          try {
+            document.exitFullscreen();
+          } catch (_) {}
+        }
         lifeMapCloseContextMenu();
         lifeMapCloseTypePicker();
         if (lifeMapDrawing) {
@@ -3727,38 +3813,6 @@
 
     /* ---- Canvas pointerdown: node drag / pan / endpoint drag ---- */
     canvas.addEventListener("pointerdown", (event) => {
-      if (event.button === 0 && !event.shiftKey) {
-        // button clicks are handled by their own listeners
-        if (
-          event.target.closest(
-            "[data-lm-addchild], [data-lm-edit], [data-lm-connect]",
-          )
-        )
-          return;
-
-        // Endpoint dot drag
-        const dot = event.target.closest(".lifemap-conn-dot");
-        if (dot) {
-          event.stopPropagation();
-          const connId = dot.dataset.connId;
-          const end = dot.dataset.end;
-          const conn = lifeMapData().connections.find((c) => c.id === connId);
-          if (conn) {
-            lifeMapSelectedConnectionId = connId;
-            lifeMapEndpointDrag = {
-              connectionId: connId,
-              end,
-              anchorId: end === "source" ? conn.targetId : conn.sourceId,
-            };
-            try {
-              dot.setPointerCapture(event.pointerId);
-            } catch (_) {}
-            renderLifeMap();
-          }
-          return;
-        }
-      }
-
       if (event.button !== 0) return;
       if (
         event.target.closest(
@@ -3767,13 +3821,42 @@
       )
         return;
 
-      // Right-click / context handled separately; only left button here
+      // Endpoint dot
+      const dot = event.target.closest(".lifemap-conn-dot");
+      if (dot) {
+        event.preventDefault();
+        event.stopPropagation();
+        const connId = dot.dataset.connId;
+        const end = dot.dataset.end;
+        const conn = lifeMapData().connections.find((c) => c.id === connId);
+        if (conn) {
+          if (lifeMapSelectedConnectionId === connId) {
+            lifeMapSelectedConnectionId = null;
+            renderLifeMap();
+            return;
+          }
+          lifeMapSelectedConnectionId = connId;
+          lifeMapEndpointDrag = {
+            connectionId: connId,
+            end,
+            anchorId: end === "source" ? conn.targetId : conn.sourceId,
+          };
+          try {
+            dot.setPointerCapture(event.pointerId);
+          } catch (_) {}
+          renderLifeMap();
+        }
+        return;
+      }
+
+      const rect = canvas.getBoundingClientRect();
       const nodeEl = event.target.closest("[data-lm-node]");
       const node = nodeEl ? lifeMapNodeById(nodeEl.dataset.lmNode) : null;
       const additive = event.shiftKey || event.ctrlKey || event.metaKey;
 
       if (node) {
-        // If a connection is being drawn, the target node click will complete it
+        if (lifeMapSelectedConnectionId) lifeMapSelectedConnectionId = null;
+
         if (lifeMapDrawing) {
           const ok = lifeMapConnectNodes(
             lifeMapDrawing.sourceId,
@@ -3813,10 +3896,12 @@
             const n = data.nodes.find((x) => x.id === id);
             return { id, x: n ? n.x : 0, y: n ? n.y : 0 };
           }),
-          startX: event.clientX,
-          startY: event.clientY,
-          moved: false,
+          startMouseWorldX:
+            (event.clientX - rect.left - lifeMapPanX) / lifeMapZoom,
+          startMouseWorldY:
+            (event.clientY - rect.top - lifeMapPanY) / lifeMapZoom,
           pointer: { x: event.clientX, y: event.clientY },
+          moved: false,
         };
         lifeMapStartAutoPan();
       } else {
@@ -3825,6 +3910,7 @@
           lifeMapSelectedId = null;
           lifeMapSelectedConnectionId = null;
           lifeMapRenderNodeSelection();
+          renderLifeMap();
         }
         lifeMapDrag = {
           kind: "pan",
@@ -3844,7 +3930,6 @@
     canvas.addEventListener("pointermove", (event) => {
       const rect = canvas.getBoundingClientRect();
 
-      // Endpoint drag temp line
       if (lifeMapEndpointDrag) {
         const anchor = lifeMapNodeById(lifeMapEndpointDrag.anchorId);
         if (anchor) {
@@ -3863,7 +3948,6 @@
         return;
       }
 
-      // Draw connection line
       if (lifeMapDrawing) {
         const source = lifeMapNodeById(lifeMapDrawing.sourceId);
         if (source) {
@@ -3883,29 +3967,39 @@
       }
 
       if (!lifeMapDrag) return;
-
-      const dx = event.clientX - lifeMapDrag.startX;
-      const dy = event.clientY - lifeMapDrag.startY;
-      if (Math.abs(dx) + Math.abs(dy) > 3) lifeMapDrag.moved = true;
       lifeMapDrag.pointer = { x: event.clientX, y: event.clientY };
 
       if (lifeMapDrag.kind === "node") {
+        const mouseWorldX =
+          (event.clientX - rect.left - lifeMapPanX) / lifeMapZoom;
+        const mouseWorldY =
+          (event.clientY - rect.top - lifeMapPanY) / lifeMapZoom;
+        const dxWorld = mouseWorldX - lifeMapDrag.startMouseWorldX;
+        const dyWorld = mouseWorldY - lifeMapDrag.startMouseWorldY;
+
+        if (Math.abs(dxWorld) + Math.abs(dyWorld) > 0.5)
+          lifeMapDrag.moved = true;
+
         lifeMapDrag.origins.forEach((origin) => {
-          const node = lifeMapNodeById(origin.id);
+          const n = lifeMapNodeById(origin.id);
           const el = canvas.querySelector(
             `[data-lm-node="${CSS.escape(origin.id)}"]`,
           );
-          if (!node || !el) return;
-          node.x = origin.x + dx / lifeMapZoom;
-          node.y = origin.y + dy / lifeMapZoom;
-          el.style.left = `${node.x}px`;
-          el.style.top = `${node.y}px`;
+          if (!n || !el) return;
+          n.x = origin.x + dxWorld;
+          n.y = origin.y + dyWorld;
+          el.style.left = `${n.x}px`;
+          el.style.top = `${n.y}px`;
         });
         lifeMapRenderEdges();
       } else {
+        const dx = event.clientX - lifeMapDrag.startX;
+        const dy = event.clientY - lifeMapDrag.startY;
+        if (Math.abs(dx) + Math.abs(dy) > 3) lifeMapDrag.moved = true;
         lifeMapPanX = lifeMapDrag.originX + dx;
         lifeMapPanY = lifeMapDrag.originY + dy;
         lifeMapApplyViewport();
+        lifeMapRenderEdges();
       }
     });
 
@@ -3915,7 +4009,6 @@
         lifeMapEndpointDrag = null;
         lifeMapRenderTempPath(null, null);
 
-        // Find node under cursor
         const el = document.elementFromPoint(event.clientX, event.clientY);
         const targetEl = el?.closest?.("[data-lm-node]");
         if (targetEl) {
@@ -3924,7 +4017,6 @@
             (c) => c.id === drag.connectionId,
           );
           if (conn) {
-            // Prevent self-loop
             const otherId =
               drag.end === "source" ? conn.targetId : conn.sourceId;
             if (targetNodeId === otherId) {
@@ -3977,12 +4069,18 @@
     canvas.addEventListener(
       "wheel",
       (event) => {
+        // Trackpad pinch = browser sends ctrlKey=true.
+        // Regular two-finger scroll = ctrlKey=false → page scrolls normally.
+        const isPinch = event.ctrlKey || event.metaKey;
+        if (!isPinch) return; // don't preventDefault → page scrolls
+
         event.preventDefault();
+
         const rect = canvas.getBoundingClientRect();
         const mx = event.clientX - rect.left;
         const my = event.clientY - rect.top;
         const oldZoom = lifeMapZoom;
-        const factor = Math.exp(-event.deltaY * 0.0018);
+        const factor = Math.exp(-event.deltaY * 0.01);
         const newZoom = Math.max(0.25, Math.min(2.4, oldZoom * factor));
         if (newZoom === oldZoom) return;
         const worldX = (mx - lifeMapPanX) / oldZoom;
@@ -4018,6 +4116,37 @@
           lifeMapApplyViewport();
         });
       }
+    });
+
+    /* ---- Fullscreen toggle (real Fullscreen API) ---- */
+    $("lifeMapFullscreen")?.addEventListener("click", async () => {
+      const page = document.querySelector(".lifemap-page");
+      if (!page) return;
+      try {
+        if (!document.fullscreenElement) {
+          await page.requestFullscreen();
+        } else {
+          await document.exitFullscreen();
+        }
+      } catch (e) {
+        notify("Fullscreen কাজ করছে না: " + (e?.message || "Unknown"));
+      }
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      const btn = $("lifeMapFullscreen");
+      if (btn)
+        btn.textContent = document.fullscreenElement
+          ? "✕ Exit Fullscreen"
+          : "⛶ Fullscreen";
+
+      // Popup গুলোকে সঠিক parent-এ নিয়ে যাই
+      lifeMapRelocatePopups();
+
+      requestAnimationFrame(() => {
+        lifeMapRenderEdges();
+        lifeMapApplyViewport();
+      });
     });
 
     /* ---- Tree selection & buttons ---- */
@@ -4112,36 +4241,43 @@
       const rect = canvas.getBoundingClientRect();
       const { x: px, y: py } = lifeMapDrag.pointer;
       const edge = 70;
-      const maxSpeed = 18;
-      let dx = 0,
-        dy = 0;
+      const maxSpeed = 14;
+
+      let panDx = 0,
+        panDy = 0;
       const dl = px - rect.left;
       const dr = rect.right - px;
       const dt = py - rect.top;
       const db = rect.bottom - py;
-      if (dl < edge) dx = -((edge - dl) / edge) * maxSpeed;
-      else if (dr < edge) dx = ((edge - dr) / edge) * maxSpeed;
-      if (dt < edge) dy = -((edge - dt) / edge) * maxSpeed;
-      else if (db < edge) dy = ((edge - db) / edge) * maxSpeed;
 
-      if (dx || dy) {
-        lifeMapPanX += dx;
-        lifeMapPanY += dy;
+      // দিক: cursor ডান edge-এ → view ডানে scroll (panX কমাও)
+      if (dr < edge) panDx = -((edge - dr) / edge) * maxSpeed;
+      else if (dl < edge) panDx = ((edge - dl) / edge) * maxSpeed;
+      if (db < edge) panDy = -((edge - db) / edge) * maxSpeed;
+      else if (dt < edge) panDy = ((edge - dt) / edge) * maxSpeed;
+
+      if (panDx || panDy) {
+        lifeMapPanX += panDx;
+        lifeMapPanY += panDy;
+        lifeMapApplyViewport();
+
+        // নতুন pan-এর সাপেক্ষে cursor world-coord আবার হিসাব
+        const mouseWorldX = (px - rect.left - lifeMapPanX) / lifeMapZoom;
+        const mouseWorldY = (py - rect.top - lifeMapPanY) / lifeMapZoom;
+        const dxWorld = mouseWorldX - lifeMapDrag.startMouseWorldX;
+        const dyWorld = mouseWorldY - lifeMapDrag.startMouseWorldY;
+
         lifeMapDrag.origins.forEach((origin) => {
-          origin.x -= dx / lifeMapZoom;
-          origin.y -= dy / lifeMapZoom;
-          const node = lifeMapNodeById(origin.id);
+          const n = lifeMapNodeById(origin.id);
           const el = canvas.querySelector(
             `[data-lm-node="${CSS.escape(origin.id)}"]`,
           );
-          if (node && el) {
-            node.x = origin.x;
-            node.y = origin.y;
-            el.style.left = `${node.x}px`;
-            el.style.top = `${node.y}px`;
-          }
+          if (!n || !el) return;
+          n.x = origin.x + dxWorld;
+          n.y = origin.y + dyWorld;
+          el.style.left = `${n.x}px`;
+          el.style.top = `${n.y}px`;
         });
-        lifeMapApplyViewport();
         lifeMapRenderEdges();
       }
       lifeMapAutoPanFrame = requestAnimationFrame(step);
@@ -4351,6 +4487,7 @@
     renderSelects();
     bindEvents();
     bindLifeMapEvents();
+    lifeMapRelocatePopups();
     syncThemeButton();
     resetPresetForm();
     resetReminderForm();
