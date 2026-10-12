@@ -1457,20 +1457,38 @@ tbody tr:last-child td {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
-  padding: 14px 16px;
+  padding: 10px 12px;
+}
+.lifemap-toolbar-group {
+  gap: 6px;
 }
 .lifemap-toolbar-group input[type="search"] {
-  width: 190px;
+  width: 150px;
   max-width: 100%;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  border-radius: 10px;
 }
 .lifemap-toolbar-group select {
   width: auto;
-  max-width: 220px;
+  max-width: 165px;
+  padding: 7px 28px 7px 10px;
+  font-size: 12.5px;
+  border-radius: 10px;
 }
 .lifemap-toolbar button {
-  min-height: 38px;
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  border-radius: 10px;
+  gap: 5px;
+  font-weight: 700;
+}
+.lifemap-zoom-label {
+  min-width: 38px;
+  font-size: 11.5px;
 }
 
 #lifeMapConnectMode[aria-pressed="true"] {
@@ -1479,6 +1497,16 @@ tbody tr:last-child td {
   border-color: transparent;
   box-shadow: 0 10px 22px -12px var(--accent);
 }
+#lifeMapMultiSelectMode[aria-pressed="true"] {
+  color: #fff;
+  background: linear-gradient(135deg, #0891b2, #06b6d4);
+  border-color: transparent;
+  box-shadow: 0 10px 22px -12px #0891b2;
+}
+.lifemap-canvas.multi-select-active {
+  box-shadow: inset 0 0 0 2px #0891b2;
+}
+
 #lifeMapViewToggle[aria-pressed="true"] {
   color: var(--accent-strong);
   background: var(--accent-soft);
@@ -2596,4 +2624,22 @@ html[data-theme="dark"] .lifemap-canvas {
 }
 .lifemap-page:fullscreen #lifeMapConfirmModal {
   z-index: 1000;
+}
+/* ============================================================
+   LIFE MAP RUBBER BAND (multi-select drag rectangle)
+   ============================================================ */
+.lifemap-rubber-band {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  border: 1.5px dashed #0891b2;
+  background: rgba(8, 145, 178, 0.14);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+.lifemap-canvas.rubber-band-armed {
+  cursor: crosshair;
+}
+.lifemap-canvas.rubber-band-armed .lifemap-node {
+  cursor: crosshair;
 }

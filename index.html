@@ -1039,12 +1039,20 @@
 
                 <div class="lifemap-toolbar-group">
                   <button
+                    id="lifeMapMultiSelectMode"
+                    type="button"
+                    aria-pressed="false"
+                    title="Multi-select: ক্লিক করলে সেই নোড + সব child auto select"
+                  >
+                    ⊞ Multi
+                  </button>
+                  <button
                     id="lifeMapConnectMode"
                     type="button"
                     aria-pressed="false"
                     title="Show/hide user connections"
                   >
-                    🔗 Connect Mode
+                    🔗 Connect
                   </button>
                   <select
                     id="lifeMapRelationType"
@@ -1077,14 +1085,14 @@
                     type="button"
                     aria-pressed="false"
                   >
-                    Tree / List
+                    ☰ Tree
                   </button>
                   <button
                     id="lifeMapFullscreen"
                     type="button"
                     aria-label="Toggle fullscreen"
                   >
-                    ⛶ Fullscreen
+                    ⛶
                   </button>
                 </div>
               </article>
