@@ -2952,11 +2952,23 @@
     reader.readAsText(file);
   }
   function syncThemeButton() {
-    const b = $("themeToggle");
-    if (!b) return;
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
-    b.textContent = dark ? "☀️" : "🌙";
-    b.title = dark ? "Light mode" : "Dark mode";
+    const b = $("themeToggle");
+    if (b) {
+      b.textContent = dark ? "☀️" : "🌙";
+      b.title = dark ? "Light mode" : "Dark mode";
+    }
+    const st = $("settingsThemeToggle");
+    if (st) st.checked = dark;
+  }
+
+  function applyTheme(theme) {
+    const next = theme === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem("lifeOS.theme", next);
+    } catch (e) {}
+    syncThemeButton();
   }
   function bindEvents() {
     $("taskFilterCategory").addEventListener("change", renderToday);
@@ -3745,15 +3757,17 @@
       }
     });
     $("themeToggle").addEventListener("click", () => {
-      const next =
-        document.documentElement.getAttribute("data-theme") === "dark"
-          ? "light"
-          : "dark";
-      document.documentElement.setAttribute("data-theme", next);
-      try {
-        localStorage.setItem("lifeOS.theme", next);
-      } catch (e) {}
-      syncThemeButton();
+      const current = document.documentElement.getAttribute("data-theme");
+      applyTheme(current === "dark" ? "light" : "dark");
+    });
+
+    $("settingsThemeToggle").addEventListener("change", (e) => {
+      applyTheme(e.target.checked ? "dark" : "light");
+      notify(
+        e.target.checked
+          ? "🌙 Dark mode চালু হয়েছে।"
+          : "☀️ Light mode চালু হয়েছে।",
+      );
     });
     document.addEventListener("keydown", (e) => {
       const tag = (e.target.tagName || "").toLowerCase(),

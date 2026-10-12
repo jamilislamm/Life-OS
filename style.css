@@ -3046,6 +3046,77 @@ html[data-theme="dark"] .lifemap-canvas {
 }
 
 /* ============================================================
+   SETTINGS — Dark mode toggle row
+   ============================================================ */
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 0.18s var(--ease),
+    background 0.18s var(--ease);
+}
+.settings-toggle-row:hover {
+  border-color: var(--line-strong);
+  background: var(--panel);
+}
+.settings-toggle-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.settings-toggle-info strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+.settings-toggle-info .tiny {
+  font-size: 11.5px;
+}
+
+.settings-toggle-row input[type="checkbox"] {
+  display: none;
+}
+
+.settings-toggle-track {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 0.2s var(--ease);
+}
+.settings-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.22);
+  transition: transform 0.22s var(--ease);
+}
+.settings-toggle-row input[type="checkbox"]:checked ~ .settings-toggle-track {
+  background: var(--accent-grad);
+}
+.settings-toggle-row
+  input[type="checkbox"]:checked
+  ~ .settings-toggle-track::after {
+  transform: translateX(18px);
+}
+
+/* ============================================================
    FLOATING TIME TRACKING WIDGET
    ============================================================ */
 
