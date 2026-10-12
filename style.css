@@ -1016,134 +1016,6 @@ tbody tr:last-child td {
 #stopTrackingBtn {
   flex: none;
 }
-
-/* ---------- Focus ---------- */
-.focus-preset {
-  max-width: 440px;
-  margin: 0 auto;
-}
-.timerface {
-  position: relative;
-  max-width: 660px;
-  margin: 16px auto 0;
-  padding: 28px 18px 22px;
-  text-align: center;
-  border-radius: 24px;
-  border: 1px solid var(--line);
-  background:
-    radial-gradient(
-      120% 110% at 50% 0%,
-      rgba(99, 102, 241, 0.14),
-      transparent 68%
-    ),
-    var(--panel-2);
-  overflow: hidden;
-}
-.timerface::after {
-  content: "";
-  position: absolute;
-  inset: -40% 25% auto;
-  height: 60%;
-  background: radial-gradient(
-    closest-side,
-    rgba(139, 92, 246, 0.22),
-    transparent
-  );
-  filter: blur(30px);
-  pointer-events: none;
-}
-.timername {
-  position: relative;
-  font-size: 13.5px;
-  font-weight: 650;
-  color: var(--muted);
-  letter-spacing: 0.01em;
-}
-.timebig {
-  position: relative;
-  font-size: clamp(46px, 8vw, 78px);
-  font-weight: 800;
-  letter-spacing: -0.045em;
-  line-height: 1.08;
-  font-variant-numeric: tabular-nums;
-  margin: 6px 0 2px;
-  color: var(--accent);
-}
-@supports ((-webkit-background-clip: text) or (background-clip: text)) {
-  .timebig {
-    background: var(--accent-grad);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    filter: drop-shadow(0 10px 24px rgba(79, 70, 229, 0.25));
-  }
-  .timebig.overtime {
-    background: linear-gradient(135deg, #f43f5e, #fb923c);
-    -webkit-background-clip: text;
-    background-clip: text;
-  }
-}
-.timebig.overtime {
-  color: var(--danger);
-}
-.timerstatus {
-  position: relative;
-  margin: 10px 0 18px;
-  font-size: 13.5px;
-}
-.focus-controls {
-  position: relative;
-  justify-content: center;
-  gap: 10px;
-}
-#focusAlert {
-  max-width: 620px;
-  margin: 14px auto 0;
-}
-#dashboardPhaseEditor {
-  max-width: 620px;
-  margin: 14px auto 0;
-}
-#focusNameWrap {
-  max-width: 440px;
-  margin: 14px auto 0;
-}
-.focus-save {
-  justify-content: center;
-  margin-top: 14px;
-}
-#dashboardAddPhase {
-  border-style: dashed;
-  color: var(--muted);
-  width: 100%;
-  padding: 10px;
-}
-#dashboardAddPhase:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.phase-row {
-  align-items: flex-end;
-}
-.phase-idx {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 800;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  margin-bottom: 3px;
-}
-.phase-num {
-  max-width: 96px;
-}
-
 /* ---------- Schedule day chips ---------- */
 .schedule-days {
   gap: 8px;
@@ -2915,5 +2787,295 @@ html[data-theme="dark"] .lifemap-canvas {
     top: auto;
     bottom: 12px;
     max-height: 50%;
+  }
+} /* ============================================================
+   FOCUS MODE — clean timer-first design (v3)
+   ============================================================ */
+
+.focus-shell {
+  max-width: 640px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+/* ---------- Session selector bar ---------- */
+.focus-session-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.focus-session-bar #focusPreset {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.focus-session-bar #newFocusSession {
+  flex: 0 0 auto;
+}
+.focus-session-bar #deleteFocusSession {
+  flex: 0 0 auto;
+  width: 42px;
+  padding: 0;
+  font-size: 15px;
+}
+
+/* ---------- Timer card ---------- */
+.focus-timer-card {
+  position: relative;
+  padding: 38px 24px 30px;
+  border-radius: 26px;
+  background:
+    radial-gradient(
+      130% 140% at 50% 0%,
+      rgba(99, 102, 241, 0.16),
+      transparent 65%
+    ),
+    var(--panel-2);
+  border: 1px solid var(--line);
+  text-align: center;
+  overflow: hidden;
+  box-shadow: 0 22px 48px -32px rgba(79, 70, 229, 0.65);
+  transition:
+    border-color 0.25s var(--ease),
+    box-shadow 0.25s var(--ease);
+}
+.focus-timer-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05),
+    transparent 42%
+  );
+  pointer-events: none;
+}
+.focus-timer-card:has(.focus-timer-time.overtime) {
+  box-shadow: 0 22px 48px -30px rgba(244, 63, 94, 0.55);
+}
+
+.focus-pip-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  padding: 6px 11px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  transition:
+    background 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    color 0.18s var(--ease);
+}
+.focus-pip-btn:hover {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.focus-timer-name {
+  position: relative;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  min-height: 18px;
+  margin-bottom: 8px;
+  padding: 0 68px; /* PiP বাটনের জন্য জায়গা */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-timer-time {
+  position: relative;
+  font-size: clamp(56px, 11vw, 96px);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  margin: 6px 0 16px;
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .focus-timer-time {
+    background: var(--accent-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 14px 30px rgba(79, 70, 229, 0.28));
+  }
+  .focus-timer-time.overtime {
+    background: linear-gradient(135deg, #f43f5e, #fb923c);
+    -webkit-background-clip: text;
+    background-clip: text;
+    filter: drop-shadow(0 14px 30px rgba(244, 63, 94, 0.32));
+  }
+}
+.focus-timer-time.overtime {
+  color: var(--danger);
+}
+
+.focus-timer-status {
+  position: relative;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+  min-height: 20px;
+}
+
+/* ---------- Controls row ---------- */
+.focus-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+.focus-controls-row button {
+  min-width: 84px;
+  padding: 11px 18px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.focus-controls-row #focusPrev,
+.focus-controls-row #focusNext {
+  min-width: 74px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Session name ---------- */
+.focus-field-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.focus-name-field input {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 14px;
+}
+
+/* ---------- Phases section ---------- */
+.focus-phases-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.focus-phases-head .focus-field-label {
+  margin: 0;
+}
+
+.phase-list {
+  display: grid;
+  gap: 8px;
+}
+.phase-list:empty::before {
+  content: "কোনো phase নেই — + Focus বা + Break চাপো।";
+  display: block;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 14px;
+  background: var(--panel-2);
+}
+
+.phase-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.phase-row .phase-idx {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  margin-bottom: 2px;
+}
+.phase-row .field.content {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.phase-row .phase-num {
+  flex: 0 0 76px;
+  max-width: none;
+}
+.phase-row .checkboxrow.switch {
+  align-self: center;
+  margin-bottom: 2px;
+  flex: 0 0 auto;
+}
+.phase-row [data-phase-remove] {
+  align-self: center;
+  margin-bottom: 2px;
+  flex: 0 0 auto;
+  width: 34px;
+  padding: 6px 0;
+}
+
+/* ---------- Add Focus / Add Break ---------- */
+.phase-add-row {
+  display: flex;
+  gap: 8px;
+}
+.phase-add-btn {
+  flex: 1;
+  border-style: dashed;
+  color: var(--muted);
+  padding: 11px;
+  font-weight: 700;
+}
+.phase-add-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ---------- Alert spacing ---------- */
+.focus-shell #focusAlert {
+  margin: 0;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 720px) {
+  .focus-timer-card {
+    padding: 34px 16px 24px;
+  }
+  .focus-timer-name {
+    padding: 0 60px;
+  }
+  .focus-controls-row button {
+    min-width: 0;
+    flex: 1 1 calc(50% - 8px);
+  }
+  .focus-controls-row #focusPrev,
+  .focus-controls-row #focusNext {
+    flex: 1 1 calc(50% - 8px);
+  }
+  .phase-row .field.content {
+    flex: 1 1 100%;
   }
 }

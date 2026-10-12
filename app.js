@@ -2167,6 +2167,30 @@
     }
     .pip-timer.paused { opacity: 0.5; }
     .pip-phase.paused { opacity: 0.5; }
+    .pip-controls {
+      display: flex;
+      gap: 6px;
+      padding-bottom: 8px;
+    }
+    .pip-controls button {
+      padding: 4px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line, #1e2942);
+      background: var(--panel-2, #131c30);
+      color: var(--text, #e8eefb);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      line-height: 1;
+      font-family: inherit;
+    }
+    .pip-controls button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+    .pip-controls button:hover:not(:disabled) {
+      background: var(--hover, #182238);
+    }
   `;
     pipWindow.document.head.appendChild(pipStyle);
 
@@ -2174,7 +2198,17 @@
     pipWindow.document.body.innerHTML = `
     <div class="pip-phase" id="pipPhase">—</div>
     <div class="pip-timer" id="pipTime">00:00</div>
+    <div class="pip-controls">
+      <button id="pipPrev" type="button" title="Previous phase">‹</button>
+      <button id="pipNext" type="button" title="Next phase">›</button>
+    </div>
   `;
+    pipWindow.document
+      .getElementById("pipPrev")
+      .addEventListener("click", prevPhase);
+    pipWindow.document
+      .getElementById("pipNext")
+      .addEventListener("click", nextPhase);
     pipWindow.document.title = "Focus";
 
     // Cleanup when user closes PiP
@@ -2234,6 +2268,14 @@
     timeEl.textContent = text;
     timeEl.classList.toggle("overtime", over && allowOT);
     timeEl.classList.toggle("paused", f.paused);
+    // === Prev / Next buttons ===
+    const prevBtn = pipWindow.document.getElementById("pipPrev");
+    const nextBtn = pipWindow.document.getElementById("pipNext");
+    const running = f.running || f.paused;
+    if (prevBtn) prevBtn.disabled = !p || !running || f.phaseIndex <= 0;
+    if (nextBtn)
+      nextBtn.disabled =
+        !p || !running || f.phaseIndex >= (p.phases?.length || 0) - 1;
   }
   function renderFocus() {
     const f = state.focus,
@@ -2267,6 +2309,8 @@
     $("focusPause").textContent = f.paused ? "Resume" : "Pause";
     $("focusNext").disabled =
       !p || (!f.running && !f.paused) || !p.phases?.[f.phaseIndex + 1];
+    $("focusPrev").disabled =
+      !p || (!f.running && !f.paused) || f.phaseIndex <= 0;
     $("focusStart").disabled = !!(f.running || f.paused);
     $("focusPause").disabled = !(f.running || f.paused);
     $("focusStop").disabled = !(f.running || f.paused);
@@ -2553,10 +2597,13 @@
     if (!f.running && !f.paused) return;
     if (f.mode !== "timer" && state.tracking.activeActionId)
       closeTrackingSegment(nowISO());
-    state.focus = { ...seed().focus };
+    // Preserve the selected session across Stop
+    const keepPresetId = f.presetId;
+    const keepMode = f.mode || "timer";
+    state.focus = { ...seed().focus, presetId: keepPresetId, mode: keepMode };
     persist();
     renderAll();
-    notify("Focus Session বন্ধ হয়েছে।");
+    notify("Focus Session বন্ধ হয়েছে — Start চাপলে আবার শুরু হবে।");
   }
   function nextPhase() {
     const f = state.focus,
@@ -2580,6 +2627,33 @@
     persist();
     renderAll();
     notify("পরের পর্যায় শুরু হয়েছে।");
+  }
+  function prevPhase() {
+    const f = state.focus,
+      p = activePreset();
+    if (!p || f.phaseIndex <= 0) return;
+    if (!f.running && !f.paused) return;
+
+    const prevIndex = f.phaseIndex - 1;
+    if (f.mode !== "timer" && state.tracking.activeActionId)
+      closeTrackingSegment(nowISO());
+
+    f.phaseIndex = prevIndex;
+    f.phaseStartedAt = nowISO();
+    f.phaseElapsedBeforePause = 0;
+    f.alerted = false;
+
+    const phase = p.phases[prevIndex];
+    if (f.mode !== "timer") {
+      const nextAction = phase.actionId || f.trackingActionId;
+      if (nextAction) {
+        f.trackingActionId = nextAction;
+        startTracking(nextAction);
+      }
+    }
+    persist();
+    renderAll();
+    notify("আগের phase-এ ফিরে গেছে।");
   }
   function checkFocusAlarm() {
     const f = state.focus;
@@ -3119,10 +3193,21 @@
     $("startPreset").addEventListener("click", () =>
       startFocus($("focusPreset").value, $("focusMode").value),
     );
+    /* ---------- Focus Mode: prev phase ---------- */
+    $("focusPrev").addEventListener("click", prevPhase);
+
+    /* ---------- Focus Mode: Start handler ---------- */
     $("focusStart").addEventListener("click", () => {
-      if (state.focus.presetId)
-        startFocus(state.focus.presetId, state.focus.mode);
-      else startFocus($("focusPreset").value, $("focusMode").value);
+      const pid = state.focus.presetId || $("focusPreset").value;
+      if (!pid) {
+        notify("আগে একটি session তৈরি বা নির্বাচন করো।");
+        return;
+      }
+      if (state.focus.running || state.focus.paused) {
+        notify("আগের Focus Session আগে Stop করো।");
+        return;
+      }
+      startFocus(pid, "timer");
     });
     $("deletePreset").addEventListener("click", () => {
       const id = $("focusPreset").value;
@@ -3266,17 +3351,21 @@
       persist();
       notify("Weekly Review notes সেভ হয়েছে।");
     });
-    $("newFocusSession").addEventListener("click", () => {
-      editingPresetId = null;
-      $("focusNameWrap").classList.remove("hidden");
-      $("dashboardFocusName").value = "";
-      $("dashboardFocusName").focus();
-      renderDashboardPhaseEditor([
-        { name: "Focus", minutes: 25, countUp: true },
-        { name: "Break", minutes: 5, countUp: true },
-      ]);
-      updateSaveFocusLabel();
+    /* ---------- Focus Mode: session selector bar ---------- */
+    $("newFocusSession").addEventListener("click", createNewFocusSession);
+    $("deleteFocusSession").addEventListener("click", deleteFocusSession);
+
+    /* ---------- Focus Mode: session name auto-save ---------- */
+    $("dashboardFocusName").addEventListener("input", syncFocusNameToPreset);
+    $("dashboardFocusName").addEventListener("blur", () => {
+      const raw = $("dashboardFocusName").value.trim();
+      if (!raw) {
+        $("dashboardFocusName").value = "Untitled session";
+        syncFocusNameToPreset();
+      }
     });
+
+    /* ---------- Focus Mode: phase editor auto-save ---------- */
     $("dashboardPhaseEditor").addEventListener(
       "input",
       syncPhaseEditorToPreset,
@@ -3285,73 +3374,38 @@
       "change",
       syncPhaseEditorToPreset,
     );
-    $("dashboardFocusName").addEventListener("input", syncPhaseEditorToPreset);
-    $("saveFocusSession").addEventListener("click", () => {
-      const name = $("dashboardFocusName").value.trim();
-      if (!name) {
-        notify("Session name লিখো।");
-        $("dashboardFocusName").focus();
-        return;
-      }
-      const phases = [
-        ...document.querySelectorAll("#dashboardPhaseEditor .phase-row"),
-      ].map((r) => ({
-        name: r.querySelector(".phase-name").value.trim() || "Phase",
-        minutes: phaseHM(r),
-        countUp: r.querySelector(".phase-countup").checked,
-      }));
-      if (!phases.length) {
-        notify("কমপক্ষে একটি phase দরকার।");
-        return;
-      }
 
-      if (editingPresetId && presetById(editingPresetId)) {
-        // === Update existing preset ===
-        const p = presetById(editingPresetId);
-        p.name = name;
-        p.phases = phases;
-        p.updatedAt = nowISO();
-        state.focus.presetId = p.id;
-        persist();
-        renderSelects();
-        $("focusPreset").value = p.id;
-        notify("✓ Session আপডেট হয়েছে।");
-      } else {
-        // === Create new ===
-        const p = {
-          id: uid("preset"),
-          name,
-          actionId: null,
-          countUp: true,
-          alert: true,
-          phases,
-          createdAt: nowISO(),
-        };
-        state.presets.push(p);
-        state.focus.presetId = p.id;
-        editingPresetId = p.id;
-        persist();
-        renderSelects();
-        $("focusPreset").value = p.id;
-        notify("✓ নতুন Focus session সেভ হয়েছে।");
-      }
-      updateSaveFocusLabel();
-      renderAll();
-    });
+    /* ---------- Focus Mode: add Focus / Break phase ---------- */
+    $("addFocusPhase").addEventListener("click", () => addFocusPhase("focus"));
+    $("addBreakPhase").addEventListener("click", () => addFocusPhase("break"));
+
+    /* ---------- Focus Mode: dropdown change ---------- */
     $("focusPreset").addEventListener("change", () => {
-      const p = presetById($("focusPreset").value);
-      if (!p) {
-        editingPresetId = null;
+      const id = $("focusPreset").value;
+      if (!id) {
+        loadFocusSession(null);
+        persist();
         return;
       }
-      state.focus.presetId = p.id;
-      editingPresetId = p.id;
-      $("dashboardFocusName").value = p.name;
-      $("focusNameWrap").classList.remove("hidden");
-      renderDashboardPhaseEditor(p.phases);
-      updateSaveFocusLabel();
+      loadFocusSession(id);
       persist();
-      renderFocus();
+    });
+
+    /* ---------- Focus Mode: prev phase ---------- */
+    $("focusPrev").addEventListener("click", prevPhase);
+
+    /* ---------- Focus Mode: updated Start handler ---------- */
+    $("focusStart").addEventListener("click", () => {
+      const pid = state.focus.presetId || $("focusPreset").value;
+      if (!pid) {
+        notify("আগে একটি session তৈরি বা নির্বাচন করো।");
+        return;
+      }
+      if (state.focus.running || state.focus.paused) {
+        notify("আগের Focus Session আগে Stop করো।");
+        return;
+      }
+      startFocus(pid, "timer");
     });
     $("weekStart").value = String(state.settings.weekStart);
     $("saveSettings").addEventListener("click", () => {
@@ -4985,13 +5039,8 @@
     const recEl = $("todayRecorded");
     if (recEl) recEl.textContent = humanMinutes(recorded / 60);
   }
-  function updateSaveFocusLabel() {
-    const btn = $("saveFocusSession");
-    if (!btn) return;
-    btn.textContent = editingPresetId ? "Update session" : "Save session";
-  }
   function syncPhaseEditorToPreset() {
-    const pid = editingPresetId;
+    const pid = editingPresetId || state.focus.presetId;
     if (!pid) return;
     const p = presetById(pid);
     if (!p) return;
@@ -5053,40 +5102,177 @@
   ) {
     const host = $("dashboardPhaseEditor");
     if (!host) return;
-    host.innerHTML =
-      phases
-        .map((p, i) => {
-          const total = Number(p.minutes) || 25,
-            h = Math.floor(total / 60),
-            m = total % 60;
-          const ot = p.countUp !== false;
-          return `<div class="phase-row item"><div class="phase-idx">${i + 1}</div><div class="field content"><label>Phase name</label><input class="phase-name" value="${escapeHTML(p.name)}"></div><div class="field phase-num"><label>ঘণ্টা</label><input class="phase-hours" type="number" min="0" value="${h}"></div><div class="field phase-num"><label>মিনিট</label><input class="phase-mins" type="number" min="0" max="59" value="${m}"></div><label class="checkboxrow switch" style="align-self:center" title="চালু থাকলে সময় শেষে Overtime চলবে, বন্ধ থাকলে পরের phase-এ চলে যাবে"><input type="checkbox" class="phase-countup" ${ot ? "checked" : ""}><span>Overtime</span></label><button class="small danger" type="button" data-phase-remove="${i}" aria-label="Remove phase">✕</button></div>`;
-        })
-        .join("") +
-      '<button type="button" id="dashboardAddPhase">+ Add phase</button>';
+
+    if (!phases || !phases.length) {
+      host.innerHTML =
+        '<div class="empty" style="padding:14px">কোনো phase নেই — + Focus বা + Break চাপো।</div>';
+      return;
+    }
+
+    host.innerHTML = phases
+      .map((p, i) => {
+        const total = Number(p.minutes) || 0,
+          h = Math.floor(total / 60),
+          m = total % 60;
+        const ot = p.countUp !== false;
+        return `<div class="phase-row item">
+        <div class="phase-idx">${i + 1}</div>
+        <div class="field content">
+          <label>Phase name</label>
+          <input class="phase-name" value="${escapeHTML(p.name)}">
+        </div>
+        <div class="field phase-num">
+          <label>ঘণ্টা</label>
+          <input class="phase-hours" type="number" min="0" value="${h}">
+        </div>
+        <div class="field phase-num">
+          <label>মিনিট</label>
+          <input class="phase-mins" type="number" min="0" max="59" value="${m}">
+        </div>
+        <label class="checkboxrow switch" title="Overtime">
+          <input type="checkbox" class="phase-countup" ${ot ? "checked" : ""}>
+          <span>Overtime</span>
+        </label>
+        <button class="small danger" type="button" data-phase-remove="${i}" aria-label="Remove phase">✕</button>
+      </div>`;
+      })
+      .join("");
+
     const collect = () =>
       [...host.querySelectorAll(".phase-row")].map((r) => ({
         name: r.querySelector(".phase-name").value,
         minutes: phaseHM(r),
         countUp: r.querySelector(".phase-countup").checked,
       }));
-    $("dashboardAddPhase")?.addEventListener("click", () => {
-      const next = collect();
-      next.push({ name: "Break", minutes: 5, countUp: true });
-      renderDashboardPhaseEditor(next);
-      syncPhaseEditorToPreset();
-    });
+
     host.querySelectorAll("[data-phase-remove]").forEach((b) =>
       b.addEventListener("click", () => {
         const next = collect();
         next.splice(Number(b.dataset.phaseRemove), 1);
-        renderDashboardPhaseEditor(
-          next.length ? next : [{ name: "Focus", minutes: 25, countUp: true }],
-        );
+        renderDashboardPhaseEditor(next);
         syncPhaseEditorToPreset();
       }),
     );
   }
+  /* ---- Focus Mode session management ---- */
+
+  function loadFocusSession(id, opts = {}) {
+    const p = presetById(id);
+    state.focus.presetId = p ? p.id : null;
+    editingPresetId = p ? p.id : null;
+
+    const sel = $("focusPreset");
+    if (sel) sel.value = p ? p.id : "";
+
+    const nameInput = $("dashboardFocusName");
+    if (nameInput) nameInput.value = p ? p.name : "";
+
+    renderDashboardPhaseEditor(
+      p && p.phases && p.phases.length ? p.phases : [],
+    );
+
+    if (p && opts.focusName && nameInput) {
+      nameInput.focus();
+      nameInput.select();
+    }
+    renderFocus();
+  }
+
+  function createNewFocusSession() {
+    const p = {
+      id: uid("preset"),
+      name: "New session",
+      actionId: null,
+      countUp: true,
+      alert: true,
+      phases: [
+        { name: "Focus", minutes: 25, countUp: true },
+        { name: "Break", minutes: 5, countUp: true },
+      ],
+      createdAt: nowISO(),
+      updatedAt: nowISO(),
+    };
+    state.presets.push(p);
+    persist();
+    renderSelects();
+    loadFocusSession(p.id, { focusName: true });
+    notify("নতুন session তৈরি হয়েছে — নাম লিখো।");
+  }
+
+  async function deleteFocusSession() {
+    const id = state.focus.presetId || $("focusPreset").value;
+    if (!id) {
+      notify("কোনো session নেই।");
+      return;
+    }
+    const p = presetById(id);
+    if (!p) return;
+    if (
+      state.focus.presetId === id &&
+      (state.focus.running || state.focus.paused)
+    ) {
+      alert("চলমান Session আগে Stop করো।");
+      return;
+    }
+    if (!confirm(`"${p.name}" মুছে ফেলবে?`)) return;
+
+    state.presets = state.presets.filter((x) => x.id !== id);
+    const next = state.presets[0] || null;
+    state.focus = { ...seed().focus, presetId: next ? next.id : null };
+    persist();
+    renderSelects();
+    if (next) loadFocusSession(next.id);
+    else {
+      loadFocusSession(null);
+    }
+    renderAll();
+    notify("Session মুছে ফেলা হয়েছে।");
+  }
+
+  function addFocusPhase(type) {
+    if (!state.focus.presetId) {
+      notify("আগে একটি session তৈরি করো।");
+      return;
+    }
+    const host = $("dashboardPhaseEditor");
+    if (!host) return;
+    const current = [...host.querySelectorAll(".phase-row")].map((r) => ({
+      name: r.querySelector(".phase-name").value.trim() || "Phase",
+      minutes: phaseHM(r),
+      countUp: r.querySelector(".phase-countup").checked,
+    }));
+    current.push({
+      name: type === "break" ? "Break" : "Focus",
+      minutes: 0,
+      countUp: false,
+    });
+    renderDashboardPhaseEditor(current);
+    syncPhaseEditorToPreset();
+  }
+
+  function syncFocusNameToPreset() {
+    const p = presetById(state.focus.presetId);
+    if (!p) return;
+    const raw = $("dashboardFocusName").value;
+    const name = raw.trim() || "Untitled session";
+    p.name = name;
+    p.updatedAt = nowISO();
+
+    // Update dropdown option text
+    const opt = $("focusPreset").querySelector(
+      `option[value="${CSS.escape(p.id)}"]`,
+    );
+    if (opt) opt.textContent = name;
+
+    // Update timer title instantly
+    const tn = $("focusTimerName");
+    if (tn) {
+      const phase = activePhase();
+      tn.textContent = `${p.name}${phase ? " — " + phase.name : ""}`;
+    }
+    persist();
+  }
+
   function boot() {
     if (!$("dashboardDate").value) $("dashboardDate").value = localDate();
     if (!$("manualDate").value) $("manualDate").value = localDate();
@@ -5102,6 +5288,17 @@
       { name: "Focus", minutes: 25 },
       { name: "Break", minutes: 5 },
     ]);
+
+    // === Focus Mode: restore last session state ===
+    if (state.focus.presetId && !presetById(state.focus.presetId)) {
+      state.focus.presetId = null;
+    }
+    if (!state.focus.presetId && state.presets.length) {
+      state.focus.presetId = state.presets[0].id;
+    }
+    if (state.focus.presetId) {
+      loadFocusSession(state.focus.presetId);
+    }
     renderAll();
     renderLifeMap();
     setInterval(tick, 500);

@@ -1424,6 +1424,7 @@
           </section>
 
           <!-- ============ FOCUS MODE ============ -->
+          <!-- ============ FOCUS MODE ============ -->
           <section id="page-focus" class="page">
             <div class="grid">
               <article class="card span12">
@@ -1434,46 +1435,89 @@
                   </div>
                 </div>
 
-                <div class="field focus-preset">
-                  <label for="focusPreset">Saved focus session</label>
-                  <select id="focusPreset"></select>
-                </div>
+                <div class="focus-shell">
+                  <!-- Session selector bar -->
+                  <div class="focus-session-bar">
+                    <select
+                      id="focusPreset"
+                      aria-label="Saved focus session"
+                    ></select>
+                    <button type="button" id="newFocusSession">+ New</button>
+                    <button
+                      type="button"
+                      id="deleteFocusSession"
+                      class="danger"
+                      title="Delete current session"
+                      aria-label="Delete current session"
+                    >
+                      🗑
+                    </button>
+                  </div>
 
-                <div class="timerface">
-                  <div id="focusTimerName" class="timername">
-                    কোনো সেশন চালু নেই
+                  <!-- Timer card -->
+                  <div class="focus-timer-card">
+                    <button
+                      id="focusPiPBtn"
+                      class="focus-pip-btn"
+                      type="button"
+                      title="Mini floating timer"
+                    >
+                      ⧉ PiP
+                    </button>
+                    <div id="focusTimerName" class="focus-timer-name">
+                      কোনো সেশন চালু নেই
+                    </div>
+                    <div id="focusTime" class="focus-timer-time">00:00</div>
+                    <div id="focusStatus" class="focus-timer-status">
+                      সেশন প্রস্তুত
+                    </div>
                   </div>
-                  <div id="focusTime" class="timebig">00:00</div>
-                  <div id="focusStatus" class="timerstatus muted">
-                    Session বেছে নিয়ে Start করো
-                  </div>
-                  <div class="row focus-controls">
+
+                  <!-- Controls row -->
+                  <div class="focus-controls-row">
                     <button class="primary" id="focusStart">Start</button>
                     <button id="focusPause">Pause</button>
                     <button id="focusStop">Stop</button>
-                    <button id="focusNext">Next phase</button>
-                    <button id="focusPiPBtn" title="Mini floating timer">
-                      ⧉ Timer
+                    <button id="focusPrev">‹ Prev</button>
+                    <button id="focusNext">Next ›</button>
+                  </div>
+
+                  <div id="focusAlert" class="notice hidden"></div>
+
+                  <!-- Session name -->
+                  <div class="focus-name-field">
+                    <label for="dashboardFocusName" class="focus-field-label"
+                      >Session name</label
+                    >
+                    <input
+                      id="dashboardFocusName"
+                      placeholder="Session name"
+                      maxlength="120"
+                    />
+                  </div>
+
+                  <!-- Phases -->
+                  <div class="focus-phases-head">
+                    <span class="focus-field-label">Phases</span>
+                  </div>
+                  <div id="dashboardPhaseEditor" class="phase-list"></div>
+
+                  <div class="phase-add-row">
+                    <button
+                      type="button"
+                      id="addFocusPhase"
+                      class="phase-add-btn"
+                    >
+                      + Focus
+                    </button>
+                    <button
+                      type="button"
+                      id="addBreakPhase"
+                      class="phase-add-btn"
+                    >
+                      + Break
                     </button>
                   </div>
-                </div>
-
-                <div id="focusAlert" class="notice hidden"></div>
-                <div id="dashboardPhaseEditor" class="stack"></div>
-
-                <div class="row focus-save">
-                  <button id="newFocusSession">+ New session</button>
-                  <button id="saveFocusSession" class="primary">
-                    Save session
-                  </button>
-                </div>
-
-                <div class="field hidden" id="focusNameWrap">
-                  <label for="dashboardFocusName">Session name</label>
-                  <input
-                    id="dashboardFocusName"
-                    placeholder="যেমন: Exercise 50 min + Break 10 min"
-                  />
                 </div>
               </article>
             </div>
