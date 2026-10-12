@@ -619,6 +619,8 @@
   let lifeMapHoverCardHideTimer = null;
   let lifeMapHoverCardNodeId = null;
   let lifeMapInspectorClosed = false;
+  let lifeMapBulkEditMode = false;
+  let lifeMapBulkEditIds = [];
 
   function normalizeLifeMap(input) {
     const data = input && typeof input === "object" ? input : {};
@@ -815,10 +817,31 @@
     );
 
     if (lifeMapSelectedId === id) lifeMapSelectedId = null;
-    if (lifeMapConnectSourceId === id) lifeMapConnectSourceId = null;
 
     persist();
     return true;
+  }
+
+  function lifeMapOpenBulkEditModal(nodes) {
+    if (!nodes || !nodes.length) return;
+    lifeMapBulkEditMode = true;
+    lifeMapBulkEditIds = nodes.map((n) => n.id);
+    lifeMapHideHoverCard();
+
+    const first = nodes[0];
+    $("lifeMapNodeId").value = first.id;
+    $("lifeMapNodeType").value = first.type;
+    $("lifeMapNodeStatus").value = first.status;
+    $("lifeMapNodeDescription").value = first.description || "";
+
+    $("lifeMapNodeName").closest(".field").classList.add("hidden");
+    $("lifeMapParentSearch").closest(".field").classList.add("hidden");
+    $("lifeMapRelationships").classList.add("hidden");
+    $("lifeMapDeleteNode").classList.add("hidden");
+    $("lifeMapSaveNode").textContent = `Apply to ${nodes.length} nodes`;
+
+    $("lifeMapModalTitle").textContent = `Bulk Edit — ${nodes.length} nodes`;
+    $("lifeMapNodeModal").classList.remove("hidden");
   }
 
   function lifeMapConnectNodes(sourceId, targetId, relation) {
@@ -1500,6 +1523,15 @@
 
   function lifeMapCloseNodeModal() {
     $("lifeMapNodeModal").classList.add("hidden");
+    if (lifeMapBulkEditMode) {
+      lifeMapBulkEditMode = false;
+      lifeMapBulkEditIds = [];
+      $("lifeMapNodeName").closest(".field").classList.remove("hidden");
+      $("lifeMapParentSearch").closest(".field").classList.remove("hidden");
+      $("lifeMapRelationships").classList.remove("hidden");
+      $("lifeMapDeleteNode").classList.remove("hidden");
+      $("lifeMapSaveNode").textContent = "Save Node";
+    }
   }
 
   function lifeMapComputeChildPosition(parent) {
@@ -1555,6 +1587,11 @@
     const node = lifeMapNodeById(nodeId);
     if (!menu || !node) return;
 
+    const selNodes = [...lifeMapSelectedIds]
+      .map((id) => lifeMapNodeById(id))
+      .filter(Boolean);
+    const isMulti = selNodes.length > 1;
+
     const statuses = [
       { value: "not-started", label: "Not started" },
       { value: "in-progress", label: "In progress" },
@@ -1566,20 +1603,25 @@
       { value: "achieved", label: "Achieved" },
     ];
 
+    const allSame = (val) =>
+      selNodes.length > 0 && selNodes.every((n) => n.status === val);
+
+    const suffix = isMulti ? ` (${selNodes.length})` : "";
+
     menu.innerHTML = `
-      <button type="button" data-ctx-action="edit">✎ Edit</button>
+      <button type="button" data-ctx-action="edit">✎ Edit${suffix}</button>
       <div class="lifemap-ctx-sub">
-        <button type="button" class="lifemap-ctx-sub-toggle">◐ Status <span class="lifemap-ctx-arrow">›</span></button>
+        <button type="button" class="lifemap-ctx-sub-toggle">◐ Status${suffix} <span class="lifemap-ctx-arrow">›</span></button>
         <div class="lifemap-ctx-submenu">
           ${statuses
             .map(
               (s) =>
-                `<button type="button" data-ctx-action="status" data-status="${s.value}">${node.status === s.value ? "✓ " : "　"}${s.label}</button>`,
+                `<button type="button" data-ctx-action="status" data-status="${s.value}">${allSame(s.value) ? "✓ " : "　"}${s.label}</button>`,
             )
             .join("")}
         </div>
       </div>
-      <button type="button" data-ctx-action="delete" class="danger">🗑 Delete</button>
+      <button type="button" data-ctx-action="delete" class="danger">🗑 Delete${suffix}</button>
     `;
     menu.style.left = `${clientX}px`;
     menu.style.top = `${clientY}px`;
@@ -1637,6 +1679,15 @@
 
   function lifeMapCloseNodeModal() {
     $("lifeMapNodeModal").classList.add("hidden");
+    if (lifeMapBulkEditMode) {
+      lifeMapBulkEditMode = false;
+      lifeMapBulkEditIds = [];
+      $("lifeMapNodeName").closest(".field").classList.remove("hidden");
+      $("lifeMapParentSearch").closest(".field").classList.remove("hidden");
+      $("lifeMapRelationships").classList.remove("hidden");
+      $("lifeMapDeleteNode").classList.remove("hidden");
+      $("lifeMapSaveNode").textContent = "Save Node";
+    }
   }
 
   function lifeMapComputeChildPosition(parent) {
@@ -4074,6 +4125,28 @@
     /* ---- Modal submit ---- */
     form.addEventListener("submit", (event) => {
       event.preventDefault();
+
+      // Bulk edit path
+      if (lifeMapBulkEditMode) {
+        const type = $("lifeMapNodeType").value;
+        const status = $("lifeMapNodeStatus").value;
+        const description = $("lifeMapNodeDescription").value.trim();
+        const ids = [...lifeMapBulkEditIds];
+        ids.forEach((id) => {
+          const n = lifeMapNodeById(id);
+          if (!n) return;
+          n.type = type;
+          n.status = status;
+          n.description = description;
+          n.updatedAt = nowISO();
+        });
+        persist();
+        lifeMapCloseNodeModal();
+        renderLifeMap();
+        notify(`${ids.length}টি node আপডেট হয়েছে।`);
+        return;
+      }
+
       const id = $("lifeMapNodeId").value;
       const node = lifeMapNodeById(id);
       if (!node) {
@@ -4221,26 +4294,52 @@
         lifeMapCloseContextMenu();
         return;
       }
+
+      const targets = lifeMapSelectedIds.has(nodeId)
+        ? [...lifeMapSelectedIds]
+            .map((id) => lifeMapNodeById(id))
+            .filter(Boolean)
+        : [node];
+      const isMulti = targets.length > 1;
+
       if (action === "edit") {
         lifeMapCloseContextMenu();
-        lifeMapOpenNodeModal(node.id);
+        if (isMulti) lifeMapOpenBulkEditModal(targets);
+        else lifeMapOpenNodeModal(node.id);
       } else if (action === "status") {
-        node.status = btn.dataset.status;
-        node.updatedAt = nowISO();
+        const newStatus = btn.dataset.status;
+        targets.forEach((n) => {
+          n.status = newStatus;
+          n.updatedAt = nowISO();
+        });
         persist();
         lifeMapCloseContextMenu();
         renderLifeMap();
-        notify("Status আপডেট হয়েছে।");
+        notify(
+          isMulti
+            ? `${targets.length}টি node-এর status আপডেট হয়েছে।`
+            : "Status আপডেট হয়েছে।",
+        );
       } else if (action === "delete") {
         lifeMapCloseContextMenu();
-        const ok = await confirmFn(
-          `"${node.name}" মুছে ফেলবে? এর সঙ্গে থাকা Connections-ও মুছে যাবে।`,
-          { title: "Delete Node", okLabel: "Delete" },
-        );
+        const ids = targets.map((n) => n.id);
+        const msg = isMulti
+          ? `${targets.length}টি node মুছে ফেলবে? এর সঙ্গে থাকা Connections-ও মুছে যাবে।`
+          : `"${node.name}" মুছে ফেলবে? এর সঙ্গে থাকা Connections-ও মুছে যাবে।`;
+        const ok = await confirmFn(msg, {
+          title: isMulti ? "Delete Nodes" : "Delete Node",
+          okLabel: "Delete",
+        });
         if (ok) {
-          lifeMapDeleteNodeById(node.id);
+          ids.forEach((id) => lifeMapDeleteNodeById(id));
+          lifeMapSelectedIds.clear();
+          lifeMapSelectedId = null;
           renderLifeMap();
-          notify("Node মুছে ফেলা হয়েছে।");
+          notify(
+            isMulti
+              ? `${targets.length}টি node মুছে ফেলা হয়েছে।`
+              : "Node মুছে ফেলা হয়েছে।",
+          );
         }
       }
     });
@@ -4687,11 +4786,23 @@
       const nodeEl = event.target.closest("[data-lm-node]");
       if (!nodeEl) return;
       event.preventDefault();
-      lifeMapOpenContextMenu(
-        nodeEl.dataset.lmNode,
-        event.clientX,
-        event.clientY,
-      );
+      const nodeId = nodeEl.dataset.lmNode;
+
+      // Windows Explorer-style: right-click on unselected → reset
+      // selection to just this node; right-click on already-selected
+      // → keep the whole selection intact.
+      if (!lifeMapSelectedIds.has(nodeId)) {
+        lifeMapSelectedIds.clear();
+        lifeMapSelectedIds.add(nodeId);
+        lifeMapSelectedId = nodeId;
+        lifeMapInspectorClosed = false;
+      } else {
+        lifeMapSelectedId = nodeId;
+      }
+      lifeMapRenderNodeSelection();
+      lifeMapRenderInspector();
+
+      lifeMapOpenContextMenu(nodeId, event.clientX, event.clientY);
     });
 
     /* ---- Wheel: pinch-zoom only ---- */
