@@ -2753,6 +2753,7 @@
       );
     $("dashboardDate").value = localDate();
     $("manualDate").value = localDate();
+    $("logFilterDate").value = localDate();
     $("dashboardDate").addEventListener("change", renderToday);
     $("otherActions").addEventListener("click", (e) => {
       const b = e.target.closest("[data-other-add]");
