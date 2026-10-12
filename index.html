@@ -1663,6 +1663,53 @@
       ><button id="deletePreset" type="button"></button>
     </div>
 
+    <!-- ===================== FLOATING TIME TRACKING WIDGET ===================== -->
+    <div id="trackingFab" class="tracking-fab-wrap">
+      <div id="trackingFabPanel" class="tracking-fab-panel hidden">
+        <div class="tracking-fab-panel-head">
+          <strong>Time Tracking</strong>
+          <button type="button" id="trackingFabClose" aria-label="Close panel">
+            ✕
+          </button>
+        </div>
+        <div id="trackingFabStatus" class="tracking-fab-status">
+          কোনো Action track হচ্ছে না।
+        </div>
+        <select
+          id="trackingFabAction"
+          aria-label="Select action to track"
+        ></select>
+        <div class="tracking-fab-actions">
+          <button type="button" class="primary" id="trackingFabStart">
+            Start / Switch
+          </button>
+          <button type="button" id="trackingFabStop">Stop</button>
+        </div>
+      </div>
+      <div id="trackingFabTimer" class="tracking-fab-timer hidden">00:00</div>
+      <button
+        type="button"
+        id="trackingFabBtn"
+        class="tracking-fab-btn"
+        aria-label="Time Tracking widget"
+      >
+        <span class="tracking-fab-ico" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12.6" r="8.2" />
+            <path d="M12 8.1v4.7l3.2 1.9" />
+            <path d="M9.4 3.1h5.2" />
+          </svg>
+        </span>
+      </button>
+    </div>
+
     <div id="toast" role="status" aria-live="polite" class="hidden"></div>
 
     <script src="app.js"></script>

@@ -2092,6 +2092,124 @@
       ? `<div class="notice"><strong>${escapeHTML(actionEmojiName(a))}</strong> track হচ্ছে<br><span class="metric">${fmt(s)}</span><br><span class="tiny">শুরু: ${new Date(state.tracking.segmentStart).toLocaleString()}</span></div>`
       : '<div class="empty">কোনো চলমান Time Tracking নেই।</div>';
   }
+
+  /* ---------- Floating Time Tracking Widget ---------- */
+  function renderTrackingFabActions() {
+    const sel = $("trackingFabAction");
+    if (!sel) return;
+    const prev = sel.value;
+    const acts = activeActions();
+    sel.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Action বেছে নাও";
+    sel.appendChild(placeholder);
+    acts.forEach((a) => {
+      const o = document.createElement("option");
+      o.value = a.id;
+      o.textContent = (a.emoji ? a.emoji + " " : "") + a.name;
+      sel.appendChild(o);
+    });
+    if (state.tracking.activeActionId)
+      sel.value = state.tracking.activeActionId;
+    else if (prev) sel.value = prev;
+  }
+
+  function updateTrackingFab() {
+    const wrap = $("trackingFab");
+    if (!wrap) return;
+    const a = activeAction();
+    const isTracking = !!a;
+    wrap.classList.toggle("tracking", isTracking);
+
+    const timer = $("trackingFabTimer");
+    if (timer) {
+      if (isTracking) {
+        timer.classList.remove("hidden");
+        timer.textContent = fmt(currentTrackingSeconds());
+      } else {
+        timer.classList.add("hidden");
+      }
+    }
+
+    const status = $("trackingFabStatus");
+    if (status) {
+      if (isTracking) {
+        status.classList.add("active");
+        status.innerHTML =
+          `<strong>${escapeHTML(actionEmojiName(a))}</strong>` +
+          `<span class="tracking-fab-live">${fmt(currentTrackingSeconds())}</span>`;
+      } else {
+        status.classList.remove("active");
+        status.textContent = "কোনো Action track হচ্ছে না।";
+      }
+    }
+
+    const stopBtn = $("trackingFabStop");
+    if (stopBtn) stopBtn.disabled = !isTracking;
+  }
+
+  function openTrackingFabPanel() {
+    const p = $("trackingFabPanel");
+    if (!p) return;
+    p.classList.remove("hidden");
+    renderTrackingFabActions();
+    updateTrackingFab();
+  }
+
+  function closeTrackingFabPanel() {
+    $("trackingFabPanel")?.classList.add("hidden");
+  }
+
+  function toggleTrackingFabPanel() {
+    const p = $("trackingFabPanel");
+    if (!p) return;
+    if (p.classList.contains("hidden")) openTrackingFabPanel();
+    else closeTrackingFabPanel();
+  }
+
+  function bindTrackingFab() {
+    const btn = $("trackingFabBtn");
+    if (!btn) return;
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleTrackingFabPanel();
+    });
+
+    $("trackingFabClose")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTrackingFabPanel();
+    });
+
+    $("trackingFabStart")?.addEventListener("click", () => {
+      const id = $("trackingFabAction")?.value;
+      if (!id) {
+        notify("একটি Action বেছে নাও।");
+        return;
+      }
+      startTracking(id);
+      updateTrackingFab();
+    });
+
+    $("trackingFabStop")?.addEventListener("click", () => {
+      stopTracking();
+      updateTrackingFab();
+    });
+
+    document.addEventListener("pointerdown", (e) => {
+      const wrap = $("trackingFab");
+      if (!wrap) return;
+      if (!wrap.contains(e.target)) closeTrackingFabPanel();
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      const wrap = $("trackingFab");
+      if (!wrap) return;
+      wrap.classList.toggle("hidden", !!document.fullscreenElement);
+    });
+  }
+
   function renderFocusMini() {
     const f = state.focus,
       p = activePreset(),
@@ -2510,6 +2628,8 @@
     renderReview();
     renderRemindersList();
     renderTodayReminders();
+    renderTrackingFabActions();
+    updateTrackingFab();
     updateLiveNumbers();
   }
   function resetActionForm() {
@@ -5091,6 +5211,7 @@
     }
     renderTrackingMini();
     renderFocusMini();
+    updateTrackingFab();
     updateLiveNumbers();
     updateReviewLiveStats();
     updatePiPContent();
@@ -5368,6 +5489,7 @@
     renderSelects();
     bindEvents();
     bindLifeMapEvents();
+    bindTrackingFab();
     lifeMapRelocatePopups();
     syncThemeButton();
     resetPresetForm();

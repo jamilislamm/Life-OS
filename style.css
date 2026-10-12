@@ -2788,6 +2788,220 @@ html[data-theme="dark"] .lifemap-canvas {
     bottom: 12px;
     max-height: 50%;
   }
+}
+
+/* ============================================================
+   FLOATING TIME TRACKING WIDGET
+   ============================================================ */
+
+.tracking-fab-wrap {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.tracking-fab-wrap > * {
+  pointer-events: auto;
+}
+
+.tracking-fab-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow:
+    0 14px 30px -10px var(--accent),
+    0 4px 12px rgba(15, 23, 42, 0.15);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    transform 0.18s var(--ease),
+    filter 0.18s var(--ease);
+}
+
+.tracking-fab-btn:hover {
+  transform: translateY(-2px) scale(1.04);
+  filter: brightness(1.06);
+  background: var(--accent-grad);
+  border-color: transparent;
+  color: #fff;
+}
+
+.tracking-fab-wrap.tracking .tracking-fab-btn:hover {
+  background: linear-gradient(135deg, #059669, #10b981);
+  border-color: transparent;
+  color: #fff;
+}
+
+.tracking-fab-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.tracking-fab-ico svg {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
+.tracking-fab-wrap.tracking .tracking-fab-btn {
+  background: linear-gradient(135deg, #059669, #10b981);
+  animation: fabGlow 1.8s ease-in-out infinite;
+}
+
+@keyframes fabGlow {
+  0%,
+  100% {
+    box-shadow:
+      0 14px 30px -10px var(--green),
+      0 0 0 0 rgba(16, 185, 129, 0.55),
+      0 4px 12px rgba(15, 23, 42, 0.15);
+  }
+  55% {
+    box-shadow:
+      0 14px 30px -10px var(--green),
+      0 0 0 14px rgba(16, 185, 129, 0),
+      0 4px 12px rgba(15, 23, 42, 0.15);
+  }
+}
+
+.tracking-fab-timer {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  box-shadow:
+    0 10px 20px -10px var(--green),
+    0 2px 8px rgba(15, 23, 42, 0.15);
+  white-space: nowrap;
+  animation: popIn 0.2s var(--ease) both;
+}
+
+.tracking-fab-panel {
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: 10px;
+  animation: popIn 0.2s var(--ease) both;
+}
+
+.tracking-fab-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tracking-fab-panel-head strong {
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.tracking-fab-panel-head button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.tracking-fab-panel-head button:hover {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.tracking-fab-status {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.tracking-fab-status.active {
+  background: var(--green-bg);
+  border-color: var(--green-line);
+  color: var(--green);
+}
+
+.tracking-fab-status strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 3px;
+  overflow-wrap: anywhere;
+}
+
+.tracking-fab-status.active strong {
+  color: var(--green);
+}
+
+.tracking-fab-status .tracking-fab-live {
+  display: inline-block;
+  margin-top: 4px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.tracking-fab-status.active .tracking-fab-live {
+  color: var(--green);
+}
+
+.tracking-fab-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tracking-fab-actions button {
+  flex: 1;
+}
+
+@media (max-width: 720px) {
+  .tracking-fab-wrap {
+    right: 12px;
+    bottom: 12px;
+    gap: 8px;
+  }
+  .tracking-fab-btn {
+    width: 50px;
+    height: 50px;
+  }
+  .tracking-fab-ico svg {
+    width: 22px;
+    height: 22px;
+  }
+  .tracking-fab-panel {
+    width: calc(100vw - 24px);
+    max-width: none;
+  }
 } /* ============================================================
    FOCUS MODE — clean timer-first design (v3)
    ============================================================ */
