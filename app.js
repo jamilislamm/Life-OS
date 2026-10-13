@@ -4549,10 +4549,15 @@
         lifeMapCloseTypePicker();
         return;
       }
-      lifeMapDrawing = { sourceId, type };
+      lifeMapDrawing = {
+        sourceId,
+        type,
+        pointer: { x: event.clientX, y: event.clientY },
+      };
+      lifeMapStartAutoPan();
       lifeMapCloseTypePicker();
       notify(
-        "মাউস যেদিকে নেবে লাইন যাবে — লক্ষ্য নোডে ক্লিক করো। (Esc = cancel)",
+        "মাউস যেদিকে নেবে লাইন যাবে — দূরের নোডে নিতে চাইলে ধারে নাও; Esc = cancel",
       );
       renderLifeMap();
     });
@@ -4663,8 +4668,10 @@
         lifeMapCloseTypePicker();
         if (lifeMapDrawing) {
           lifeMapDrawing = null;
+          lifeMapStopAutoPan();
           lifeMapRenderTempPath(null, null);
           renderLifeMap();
+          notify("Connection বাতিল হয়েছে।");
         }
         if (lifeMapEndpointDrag) {
           lifeMapEndpointDrag = null;
@@ -4768,7 +4775,9 @@
             connectionId: connId,
             end,
             anchorId: end === "source" ? conn.targetId : conn.sourceId,
+            pointer: { x: event.clientX, y: event.clientY },
           };
+          lifeMapStartAutoPan();
           try {
             dot.setPointerCapture(event.pointerId);
           } catch (_) {}
@@ -4811,6 +4820,7 @@
             lifeMapDrawing.type,
           );
           lifeMapDrawing = null;
+          lifeMapStopAutoPan();
           lifeMapRenderTempPath(null, null);
           renderLifeMap();
           if (ok) notify("Connection তৈরি হয়েছে।");
@@ -4899,6 +4909,10 @@
       }
 
       if (lifeMapEndpointDrag) {
+        lifeMapEndpointDrag.pointer = {
+          x: event.clientX,
+          y: event.clientY,
+        };
         const anchor = lifeMapNodeById(lifeMapEndpointDrag.anchorId);
         if (anchor) {
           const rects = lifeMapNodeRects();
@@ -4917,6 +4931,10 @@
       }
 
       if (lifeMapDrawing) {
+        lifeMapDrawing.pointer = {
+          x: event.clientX,
+          y: event.clientY,
+        };
         const source = lifeMapNodeById(lifeMapDrawing.sourceId);
         if (source) {
           const rects = lifeMapNodeRects();
@@ -4992,6 +5010,7 @@
       if (lifeMapEndpointDrag) {
         const drag = lifeMapEndpointDrag;
         lifeMapEndpointDrag = null;
+        lifeMapStopAutoPan();
         lifeMapRenderTempPath(null, null);
         const el = document.elementFromPoint(event.clientX, event.clientY);
         const targetEl = el?.closest?.("[data-lm-node]");
@@ -5240,21 +5259,36 @@
     });
   }
 
-  /* ---------- Auto-pan during node drag ---------- */
+  /* ---------- Auto-pan during node / endpoint / drawing ---------- */
   function lifeMapStartAutoPan() {
     if (lifeMapAutoPanFrame) return;
     const step = () => {
-      if (!lifeMapDrag || lifeMapDrag.kind !== "node" || !lifeMapDrag.pointer) {
-        lifeMapAutoPanFrame = null;
-        return;
-      }
       const canvas = $("lifeMapCanvas");
       if (!canvas) {
         lifeMapAutoPanFrame = null;
         return;
       }
+
+      let pointer = null;
+      let kind = null;
+      if (lifeMapDrag && lifeMapDrag.kind === "node" && lifeMapDrag.pointer) {
+        pointer = lifeMapDrag.pointer;
+        kind = "node";
+      } else if (lifeMapEndpointDrag && lifeMapEndpointDrag.pointer) {
+        pointer = lifeMapEndpointDrag.pointer;
+        kind = "endpoint";
+      } else if (lifeMapDrawing && lifeMapDrawing.pointer) {
+        pointer = lifeMapDrawing.pointer;
+        kind = "drawing";
+      }
+
+      if (!pointer) {
+        lifeMapAutoPanFrame = null;
+        return;
+      }
+
       const rect = canvas.getBoundingClientRect();
-      const { x: px, y: py } = lifeMapDrag.pointer;
+      const { x: px, y: py } = pointer;
       const edge = 70;
       const maxSpeed = 14;
 
@@ -5275,22 +5309,54 @@
         lifeMapPanY += panDy;
         lifeMapApplyViewport();
 
-        const mouseWorldX = (px - rect.left - lifeMapPanX) / lifeMapZoom;
-        const mouseWorldY = (py - rect.top - lifeMapPanY) / lifeMapZoom;
-        const dxWorld = mouseWorldX - lifeMapDrag.startMouseWorldX;
-        const dyWorld = mouseWorldY - lifeMapDrag.startMouseWorldY;
+        if (kind === "node") {
+          const mouseWorldX = (px - rect.left - lifeMapPanX) / lifeMapZoom;
+          const mouseWorldY = (py - rect.top - lifeMapPanY) / lifeMapZoom;
+          const dxWorld = mouseWorldX - lifeMapDrag.startMouseWorldX;
+          const dyWorld = mouseWorldY - lifeMapDrag.startMouseWorldY;
 
-        lifeMapDrag.origins.forEach((origin) => {
-          const n = lifeMapNodeById(origin.id);
-          const el = canvas.querySelector(
-            `[data-lm-node="${CSS.escape(origin.id)}"]`,
-          );
-          if (!n || !el) return;
-          n.x = origin.x + dxWorld;
-          n.y = origin.y + dyWorld;
-          el.style.left = `${n.x}px`;
-          el.style.top = `${n.y}px`;
-        });
+          lifeMapDrag.origins.forEach((origin) => {
+            const n = lifeMapNodeById(origin.id);
+            const el = canvas.querySelector(
+              `[data-lm-node="${CSS.escape(origin.id)}"]`,
+            );
+            if (!n || !el) return;
+            n.x = origin.x + dxWorld;
+            n.y = origin.y + dyWorld;
+            el.style.left = `${n.x}px`;
+            el.style.top = `${n.y}px`;
+          });
+        } else if (kind === "endpoint") {
+          const anchor = lifeMapNodeById(lifeMapEndpointDrag.anchorId);
+          if (anchor) {
+            const rects = lifeMapNodeRects();
+            const rs = rects.get(anchor.id);
+            if (rs) {
+              const worldMouse = {
+                x: (px - rect.left - lifeMapPanX) / lifeMapZoom,
+                y: (py - rect.top - lifeMapPanY) / lifeMapZoom,
+              };
+              const sc = { x: rs.x + rs.w / 2, y: rs.y + rs.h / 2 };
+              const start = lifeMapIntersectRect(rs, worldMouse);
+              lifeMapRenderTempPath(start, worldMouse);
+            }
+          }
+        } else if (kind === "drawing") {
+          const source = lifeMapNodeById(lifeMapDrawing.sourceId);
+          if (source) {
+            const rects = lifeMapNodeRects();
+            const rs = rects.get(source.id);
+            if (rs) {
+              const worldMouse = {
+                x: (px - rect.left - lifeMapPanX) / lifeMapZoom,
+                y: (py - rect.top - lifeMapPanY) / lifeMapZoom,
+              };
+              const sc = { x: rs.x + rs.w / 2, y: rs.y + rs.h / 2 };
+              const start = lifeMapIntersectRect(rs, worldMouse);
+              lifeMapRenderTempPath(start, worldMouse, lifeMapDrawing.type);
+            }
+          }
+        }
         lifeMapRenderEdges();
       }
       lifeMapAutoPanFrame = requestAnimationFrame(step);
