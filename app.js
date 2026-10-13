@@ -2456,6 +2456,16 @@
       cursor: pointer;
       line-height: 1;
       font-family: inherit;
+      min-width: 32px;
+    }
+    .pip-controls button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    #pipPause {
+      padding: 4px 12px;
+      font-size: 12.5px;
+      min-width: 64px;
     }
     .pip-controls button:disabled {
       opacity: 0.3;
@@ -2467,12 +2477,13 @@
   `;
     pipWindow.document.head.appendChild(pipStyle);
 
-    // PiP DOM — phase name on top, timer below
+    // PiP DOM — phase name on top, timer, then controls row
     pipWindow.document.body.innerHTML = `
     <div class="pip-phase" id="pipPhase">—</div>
     <div class="pip-timer" id="pipTime">00:00</div>
     <div class="pip-controls">
       <button id="pipPrev" type="button" title="Previous phase">‹</button>
+      <button id="pipPause" type="button" title="Pause / Resume">Pause</button>
       <button id="pipNext" type="button" title="Next phase">›</button>
     </div>
   `;
@@ -2482,6 +2493,11 @@
     pipWindow.document
       .getElementById("pipNext")
       .addEventListener("click", nextPhase);
+    pipWindow.document
+      .getElementById("pipPause")
+      .addEventListener("click", () => {
+        if (state.focus.running || state.focus.paused) pauseFocus();
+      });
     pipWindow.document.title = "Focus";
 
     // Cleanup when user closes PiP
@@ -2541,14 +2557,19 @@
     timeEl.textContent = text;
     timeEl.classList.toggle("overtime", over && allowOT);
     timeEl.classList.toggle("paused", f.paused);
-    // === Prev / Next buttons ===
+    // === Prev / Next / Pause buttons ===
     const prevBtn = pipWindow.document.getElementById("pipPrev");
     const nextBtn = pipWindow.document.getElementById("pipNext");
+    const pauseBtn = pipWindow.document.getElementById("pipPause");
     const running = f.running || f.paused;
     if (prevBtn) prevBtn.disabled = !p || !running || f.phaseIndex <= 0;
     if (nextBtn)
       nextBtn.disabled =
         !p || !running || f.phaseIndex >= (p.phases?.length || 0) - 1;
+    if (pauseBtn) {
+      pauseBtn.textContent = f.paused ? "Resume" : "Pause";
+      pauseBtn.disabled = !p || !running;
+    }
   }
   function renderFocus() {
     const f = state.focus,
