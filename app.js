@@ -1569,10 +1569,73 @@
       </div>
       <button type="button" data-ctx-action="delete" class="danger">🗑 Delete${suffix}</button>
     `;
-    menu.style.left = `${clientX}px`;
-    menu.style.top = `${clientY}px`;
     menu.classList.remove("hidden");
+
+    // Measure & reposition so the menu never spills off-screen.
+    menu.style.left = "0px";
+    menu.style.top = "0px";
+    const margin = 8;
+    const mRect = menu.getBoundingClientRect();
+    let left = clientX;
+    let top = clientY;
+    if (left + mRect.width > window.innerWidth - margin) {
+      left = Math.max(margin, window.innerWidth - mRect.width - margin);
+    }
+    if (top + mRect.height > window.innerHeight - margin) {
+      // Not enough room below → open upward from the cursor.
+      top = Math.max(margin, clientY - mRect.height);
+    }
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+
+    // Submenu: measure its real height, then flip upward if the
+    // status toggle sits too low on the screen.
+    const subWrap = menu.querySelector(".lifemap-ctx-sub");
+    const submenu = menu.querySelector(".lifemap-ctx-submenu");
+    const subToggle = menu.querySelector(".lifemap-ctx-sub-toggle");
+    if (subWrap && submenu && subToggle) {
+      subWrap.classList.remove("flip-up");
+      const prevDisplay = submenu.style.display;
+      const prevVis = submenu.style.visibility;
+      submenu.style.display = "grid";
+      submenu.style.visibility = "hidden";
+      const subH = submenu.offsetHeight || 0;
+      submenu.style.display = prevDisplay;
+      submenu.style.visibility = prevVis;
+
+      const toggleRect = subToggle.getBoundingClientRect();
+      if (toggleRect.top + subH > window.innerHeight - margin) {
+        subWrap.classList.add("flip-up");
+      }
+    }
+
     lifeMapContextMenuNodeId = nodeId;
+
+    // JS-managed submenu hover: CSS :hover alone can miss a frame
+    // while the mouse is between the toggle and the submenu, causing
+    // the submenu to vanish mid-travel. Binding mouseenter/leave on
+    // the wrapper keeps it open reliably.
+    menu.querySelectorAll(".lifemap-ctx-sub").forEach((sub) => {
+      const submenu = sub.querySelector(".lifemap-ctx-submenu");
+      if (!submenu) return;
+      let hideTimer = null;
+
+      const openIt = () => {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+        submenu.classList.add("ctx-open");
+      };
+
+      const closeItLater = () => {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          submenu.classList.remove("ctx-open");
+        }, 220);
+      };
+
+      sub.addEventListener("mouseenter", openIt);
+      sub.addEventListener("mouseleave", closeItLater);
+    });
   }
 
   function lifeMapCloseContextMenu() {

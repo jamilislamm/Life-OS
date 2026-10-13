@@ -2369,6 +2369,20 @@ html[data-theme="dark"] .lifemap-canvas {
   display: grid;
   gap: 2px;
 }
+
+/* When the status toggle sits low on the screen, the submenu opens
+   upward instead of downward so every item stays reachable. */
+.lifemap-ctx-sub.flip-up .lifemap-ctx-submenu {
+  top: auto;
+  bottom: -6px;
+}
+
+/* JS-managed hover state — overrides :hover-only behaviour and gives
+   a small grace period so the cursor can cross any pixel gap. */
+.lifemap-ctx-submenu.ctx-open {
+  display: grid;
+  gap: 2px;
+}
 .lifemap-ctx-submenu button {
   font-size: 12.5px;
 }
