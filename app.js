@@ -889,7 +889,6 @@
     $("lifeMapNodeDescription").value = first.description || "";
 
     $("lifeMapNodeName").closest(".field").classList.add("hidden");
-    $("lifeMapParentSearch").closest(".field").classList.add("hidden");
     $("lifeMapRelationships").classList.add("hidden");
     $("lifeMapDeleteNode").classList.add("hidden");
     $("lifeMapSaveNode").textContent = `Apply to ${nodes.length} nodes`;
@@ -962,29 +961,6 @@
     }
 
     persist();
-  }
-
-  function lifeMapRenderParentOptions(selectedNode) {
-    const list = $("lifeMapParentList");
-    if (!list) return;
-
-    const possibleParents = lifeMapData().nodes.filter((node) => {
-      if (!selectedNode) return true;
-      if (node.id === selectedNode.id) return false;
-
-      let parentId = node.parentId;
-      const visited = new Set();
-      while (parentId && !visited.has(parentId)) {
-        if (parentId === selectedNode.id) return false;
-        visited.add(parentId);
-        parentId = lifeMapNodeById(parentId)?.parentId || null;
-      }
-      return true;
-    });
-
-    list.innerHTML = possibleParents
-      .map((node) => `<option value="${escapeHTML(node.name)}"></option>`)
-      .join("");
   }
 
   function lifeMapRenderConnections(nodeId) {
@@ -1426,7 +1402,6 @@
       lifeMapBulkEditMode = false;
       lifeMapBulkEditIds = [];
       $("lifeMapNodeName").closest(".field").classList.remove("hidden");
-      $("lifeMapParentSearch").closest(".field").classList.remove("hidden");
       $("lifeMapRelationships").classList.remove("hidden");
       $("lifeMapDeleteNode").classList.remove("hidden");
       $("lifeMapSaveNode").textContent = "Save Node";
@@ -1591,10 +1566,6 @@
     $("lifeMapNodeStatus").value = node.status;
     $("lifeMapNodeDescription").value = node.description || "";
 
-    const parent = node.parentId ? lifeMapNodeById(node.parentId) : null;
-    $("lifeMapParentSearch").value = parent ? parent.name : "";
-
-    lifeMapRenderParentOptions(node);
     lifeMapRenderConnections(node.id);
 
     $("lifeMapModalTitle").textContent = isNew ? "New Node" : "Edit Node";
@@ -1609,7 +1580,6 @@
       lifeMapBulkEditMode = false;
       lifeMapBulkEditIds = [];
       $("lifeMapNodeName").closest(".field").classList.remove("hidden");
-      $("lifeMapParentSearch").closest(".field").classList.remove("hidden");
       $("lifeMapRelationships").classList.remove("hidden");
       $("lifeMapDeleteNode").classList.remove("hidden");
       $("lifeMapSaveNode").textContent = "Save Node";
@@ -4440,19 +4410,12 @@
         $("lifeMapNodeName").focus();
         return;
       }
-      let parentId = null;
-      const parentText = $("lifeMapParentSearch").value.trim();
-      if (parentText) {
-        const match = lifeMapData().nodes.find(
-          (n) => n.id !== id && n.name === parentText,
-        );
-        if (match) parentId = match.id;
-      }
+      // parentId is NOT part of this payload — it's preserved on the
+      // node and only modified via the connect (⇄) workflow.
       const updates = {
         name,
         type: $("lifeMapNodeType").value,
         status: $("lifeMapNodeStatus").value,
-        parentId,
         description: $("lifeMapNodeDescription").value.trim(),
       };
       if (!lifeMapSaveNode(id, updates)) return;
