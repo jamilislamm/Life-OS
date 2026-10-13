@@ -2725,10 +2725,12 @@ html[data-theme="dark"] .lifemap-canvas {
   font-weight: 800;
   line-height: 1;
   box-shadow: 0 4px 10px -4px var(--accent);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .lifemap-filter-btn[aria-expanded="true"] .lifemap-filter-badge {
-  background: var(--accent-strong);
-  box-shadow: none;
+  /* No filter here. CSS `filter: brightness()` modifies rendered
+     pixels globally and washed out the gradient in dark mode. */
+  box-shadow: 0 4px 12px -4px var(--accent);
 }
 
 /* Popover shell */
