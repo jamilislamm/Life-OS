@@ -1573,6 +1573,23 @@
   function lifeMapOpenTypePicker(nodeId, buttonEl) {
     const picker = $("lifeMapTypePicker");
     if (!picker || !buttonEl) return;
+
+    // Filter visible options by connect mode:
+    //   Connect OFF  → Parent / Child (hierarchy)
+    //   Connect ON   → Supports / Blocks / Depends / Addresses
+    picker.querySelectorAll("[data-conn-type]").forEach((btn) => {
+      const isHierarchy = ["parent", "child"].includes(btn.dataset.connType);
+      const show = lifeMapConnectionMode ? !isHierarchy : isHierarchy;
+      btn.classList.toggle("hidden", !show);
+    });
+
+    const title = picker.querySelector(".lifemap-type-picker-title");
+    if (title) {
+      title.textContent = lifeMapConnectionMode
+        ? "Connection type"
+        : "Hierarchy link";
+    }
+
     const rect = buttonEl.getBoundingClientRect();
     picker.style.left = `${Math.min(window.innerWidth - 240, rect.right + 8)}px`;
     picker.style.top = `${Math.min(window.innerHeight - 260, rect.top - 8)}px`;
@@ -1651,9 +1668,12 @@
       svg.innerHTML = "";
       return;
     }
+    // Normalize "child" → "parent" for the preview line so it inherits
+    // the hierarchy look. The swap of source/target happens on commit.
+    const visualType = type === "child" ? "parent" : type || "related";
     const midX = (startPt.x + endPt.x) / 2;
     const d = `M ${startPt.x} ${startPt.y} C ${midX} ${startPt.y}, ${midX} ${endPt.y}, ${endPt.x} ${endPt.y}`;
-    svg.innerHTML = `<path class="lifemap-edge" data-relation="${escapeHTML(type || "related")}" d="${d}" style="opacity:.85" />`;
+    svg.innerHTML = `<path class="lifemap-edge" data-relation="${escapeHTML(visualType)}" d="${d}" style="opacity:.85" />`;
   }
 
   /* ---------- Modal helpers ---------- */
@@ -4622,10 +4642,6 @@
       if (connectBtn) {
         event.stopPropagation();
         event.preventDefault();
-        if (!lifeMapConnectionMode) {
-          notify("Connection তৈরি করতে আগে Connect Mode চালু করো।");
-          return;
-        }
         lifeMapOpenTypePicker(connectBtn.dataset.lmConnect, connectBtn);
         return;
       }
@@ -4935,11 +4951,17 @@
         if (lifeMapSelectedConnectionId) lifeMapSelectedConnectionId = null;
 
         if (lifeMapDrawing) {
-          const ok = lifeMapConnectNodes(
-            lifeMapDrawing.sourceId,
-            node.id,
-            lifeMapDrawing.type,
-          );
+          let src = lifeMapDrawing.sourceId;
+          let tgt = node.id;
+          let rel = lifeMapDrawing.type;
+          // "Child" mode means: the drawn-from node becomes a child of
+          // the target, so we swap source/target and store as "parent".
+          if (rel === "child") {
+            src = node.id;
+            tgt = lifeMapDrawing.sourceId;
+            rel = "parent";
+          }
+          const ok = lifeMapConnectNodes(src, tgt, rel);
           lifeMapDrawing = null;
           lifeMapStopAutoPan();
           lifeMapRenderTempPath(null, null);

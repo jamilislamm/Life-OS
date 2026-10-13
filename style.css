@@ -2539,6 +2539,18 @@ html[data-theme="dark"] .lifemap-canvas {
 .lm-tp-dot[data-type="addresses"] {
   background: var(--lm-blue);
 }
+.lm-tp-dot[data-type="parent"] {
+  background: var(--lm-purple);
+}
+.lm-tp-dot[data-type="child"] {
+  background: var(--lm-blue);
+}
+/* Temp connection preview for "parent" relation (uses hierarchy look) */
+.lifemap-edge[data-relation="parent"] {
+  stroke: var(--lm-purple);
+  stroke-width: 2.2;
+  opacity: 0.85;
+}
 
 /* Responsive */
 @media (max-width: 900px) {
