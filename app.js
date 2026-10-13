@@ -671,7 +671,8 @@
     action: { label: "Action", icon: "✓" },
     research: { label: "Research", icon: "⌕" },
     decision: { label: "Decision", icon: "⑂" },
-    experiment: { label: "Experiment", icon: "⚗" },
+    experiment: { label: "Experiment", icon: "⬡" },
+    trigger: { label: "Trigger", icon: "⚡" },
   };
 
   const LIFE_MAP_RELATIONS = {

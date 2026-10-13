@@ -1812,38 +1812,134 @@ html[data-theme="dark"] .lifemap-canvas {
     0 10px 30px rgba(79, 70, 229, 0.35);
 }
 
-/* Node header (Type badge) */
+/* ============================================================
+   NODE TYPE BADGE — two-part chip (icon square + label)
+   ============================================================
+   Design rationale:
+   - Split-chip pattern (M3 assist chip / Linear / Radix): a solid
+     colored square holds the type icon, a soft tinted panel holds
+     the type name. This gives every node an instantly readable
+     "category stamp" that survives both light and dark modes.
+   - Colors come from a single --type-color token defined per data-
+     type below, so future types only need one new line.
+   ============================================================ */
+
+/* Node header */
 .lifemap-node-head {
-  margin-bottom: 6px;
+  margin-bottom: 7px;
 }
+
+/* Type tokens — one line per type, everything else reads these */
+.lifemap-node[data-type="goal"] {
+  --type-color: #7c3aed;
+  --type-rgb: 124, 58, 237;
+}
+.lifemap-node[data-type="step"] {
+  --type-color: #2563eb;
+  --type-rgb: 37, 99, 235;
+}
+.lifemap-node[data-type="barrier"] {
+  --type-color: #dc2626;
+  --type-rgb: 220, 38, 38;
+}
+.lifemap-node[data-type="loop"] {
+  --type-color: #d97706;
+  --type-rgb: 217, 119, 6;
+}
+.lifemap-node[data-type="belief"] {
+  --type-color: #db2777;
+  --type-rgb: 219, 39, 119;
+}
+.lifemap-node[data-type="skill-gap"] {
+  --type-color: #0891b2;
+  --type-rgb: 8, 145, 178;
+}
+.lifemap-node[data-type="condition"] {
+  --type-color: #64748b;
+  --type-rgb: 100, 116, 139;
+}
+.lifemap-node[data-type="measure"] {
+  --type-color: #059669;
+  --type-rgb: 5, 150, 105;
+}
+.lifemap-node[data-type="action"] {
+  --type-color: #059669;
+  --type-rgb: 5, 150, 105;
+}
+.lifemap-node[data-type="research"] {
+  --type-color: #0891b2;
+  --type-rgb: 8, 145, 178;
+}
+.lifemap-node[data-type="decision"] {
+  --type-color: #7c3aed;
+  --type-rgb: 124, 58, 237;
+}
+.lifemap-node[data-type="experiment"] {
+  --type-color: #d97706;
+  --type-rgb: 217, 119, 6;
+}
+.lifemap-node[data-type="trigger"] {
+  --type-color: #dc2626;
+  --type-rgb: 220, 38, 38;
+}
+
 .lifemap-node-type {
   display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11.5px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  padding: 4px 10px 4px 4px;
-  border-radius: 999px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-}
-.lifemap-node-type-icon {
-  font-size: 17px;
-  line-height: 1;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
+  align-items: stretch;
+  padding: 0;
+  gap: 0;
   border-radius: 8px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  color: inherit;
-}
-.lifemap-node-type-label {
+  overflow: hidden;
+  border: 1px solid rgba(var(--type-rgb, 100, 116, 139), 0.32);
+  background: rgba(var(--type-rgb, 100, 116, 139), 0.13);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
   line-height: 1;
+  box-shadow: 0 2px 8px -5px rgba(var(--type-rgb, 100, 116, 139), 0.7);
+  transition:
+    box-shadow 0.2s var(--ease),
+    transform 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+
+.lifemap-node:hover .lifemap-node-type {
+  transform: translateY(-1px);
+  border-color: rgba(var(--type-rgb, 100, 116, 139), 0.5);
+  box-shadow: 0 5px 14px -5px rgba(var(--type-rgb, 100, 116, 139), 0.85);
+}
+
+/* Leading solid-colored square with the type icon */
+.lifemap-node-type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 5px 6px;
+  background: var(--type-color, #64748b);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+}
+
+/* Trailing tinted label */
+.lifemap-node-type-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px 5px 9px;
+  color: var(--type-color, var(--muted));
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  line-height: 1;
+}
+
+/* Dark mode — richer tint so the chip doesn't wash out */
+html[data-theme="dark"] .lifemap-node-type {
+  background: rgba(var(--type-rgb, 100, 116, 139), 0.2);
+  border-color: rgba(var(--type-rgb, 100, 116, 139), 0.42);
 }
 
 /* Node title */
@@ -1871,16 +1967,22 @@ html[data-theme="dark"] .lifemap-canvas {
   align-items: center;
   gap: 5px;
   max-width: 100%;
-  padding: 3px 9px;
+  padding: 4px 11px;
   border-radius: 999px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.02em;
   line-height: 1.35;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   background: var(--panel-2);
   color: var(--muted);
   overflow-wrap: anywhere;
+  transition:
+    transform 0.16s var(--ease),
+    box-shadow 0.16s var(--ease);
+}
+.lifemap-node:hover .lifemap-node-status {
+  transform: translateY(-1px);
 }
 .lifemap-node-status::before {
   content: "";
@@ -1893,34 +1995,39 @@ html[data-theme="dark"] .lifemap-canvas {
 .lifemap-node-status[data-status="not-started"] {
   background: var(--panel-2);
   color: var(--muted);
-  border-color: var(--line);
+  border-color: var(--line-strong);
 }
 .lifemap-node-status[data-status="in-progress"] {
-  background: var(--info-bg);
-  color: var(--info);
-  border-color: var(--info-line);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff;
+  border-color: #1d4ed8;
+  box-shadow: 0 3px 10px -4px rgba(59, 130, 246, 0.65);
 }
 .lifemap-node-status[data-status="done"],
 .lifemap-node-status[data-status="achieved"],
 .lifemap-node-status[data-status="resolved"] {
-  background: var(--green-bg);
-  color: var(--green);
-  border-color: var(--green-line);
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border-color: #047857;
+  box-shadow: 0 3px 10px -4px rgba(16, 185, 129, 0.65);
 }
 .lifemap-node-status[data-status="active"] {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  border-color: var(--accent);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  border-color: #4f46e5;
+  box-shadow: 0 3px 10px -4px rgba(99, 102, 241, 0.7);
 }
 .lifemap-node-status[data-status="observed"] {
-  background: var(--amber-bg);
-  color: var(--amber);
-  border-color: var(--amber-line);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #1f2937;
+  border-color: #b45309;
+  box-shadow: 0 3px 10px -4px rgba(245, 158, 11, 0.65);
 }
 .lifemap-node-status[data-status="tested"] {
-  background: var(--info-bg);
-  color: var(--info);
-  border-color: var(--info-line);
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  color: #fff;
+  border-color: #0e7490;
+  box-shadow: 0 3px 10px -4px rgba(6, 182, 212, 0.65);
 }
 
 /* Node buttons (✎ top-right, + and ⇄ stacked right-middle) */
@@ -2196,6 +2303,73 @@ html[data-theme="dark"] .lifemap-canvas {
 }
 .lifemap-node[data-type="experiment"] .lifemap-node-type-icon {
   color: var(--lm-orange);
+}
+
+/* TRIGGER — signal-style node: red/orange hazard theme */
+.lifemap-node[data-type="trigger"] {
+  border-left-color: #dc2626;
+  border-left-width: 6px;
+  border-left-style: solid;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(220, 38, 38, 0.06) 0 6px,
+      transparent 6px 14px
+    ),
+    var(--panel);
+}
+.lifemap-node[data-type="trigger"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 12px 12px 0 0;
+  background: repeating-linear-gradient(
+    90deg,
+    #dc2626 0 10px,
+    #f59e0b 10px 20px
+  );
+}
+.lifemap-node[data-type="trigger"] .lifemap-node-type-icon {
+  color: #dc2626;
+}
+
+/* ------------------------------------------------------------
+   Force the new two-part chip design for EVERY type, regardless
+   of the old per-type color rules above. The added .lifemap-node-
+   head ancestor gives these rules higher specificity, so they win
+   without having to delete 13 old per-type blocks.
+   ------------------------------------------------------------ */
+.lifemap-node[data-type] .lifemap-node-head .lifemap-node-type {
+  color: var(--type-color, var(--muted));
+  background: rgba(var(--type-rgb, 100, 116, 139), 0.13);
+  border: 1px solid rgba(var(--type-rgb, 100, 116, 139), 0.32);
+  border-radius: 8px;
+  padding: 0;
+  gap: 0;
+  align-items: stretch;
+}
+html[data-theme="dark"]
+  .lifemap-node[data-type]
+  .lifemap-node-head
+  .lifemap-node-type {
+  background: rgba(var(--type-rgb, 100, 116, 139), 0.2);
+  border-color: rgba(var(--type-rgb, 100, 116, 139), 0.42);
+}
+.lifemap-node[data-type]
+  .lifemap-node-head
+  .lifemap-node-type
+  .lifemap-node-type-icon {
+  color: #fff;
+  background: var(--type-color, #64748b);
+}
+.lifemap-node[data-type]
+  .lifemap-node-head
+  .lifemap-node-type
+  .lifemap-node-type-label {
+  color: var(--type-color, var(--muted));
 }
 
 /* Empty state */
@@ -2683,29 +2857,29 @@ html[data-theme="dark"] .lifemap-canvas {
 .lifemap-hc-status[data-status="done"],
 .lifemap-hc-status[data-status="achieved"],
 .lifemap-hc-status[data-status="resolved"] {
-  background: var(--green-bg);
-  color: var(--green);
-  border-color: var(--green-line);
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border-color: #047857;
 }
 .lifemap-hc-status[data-status="in-progress"] {
-  background: var(--info-bg);
-  color: var(--info);
-  border-color: var(--info-line);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff;
+  border-color: #1d4ed8;
 }
 .lifemap-hc-status[data-status="active"] {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  border-color: var(--accent);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  border-color: #4f46e5;
 }
 .lifemap-hc-status[data-status="observed"] {
-  background: var(--amber-bg);
-  color: var(--amber);
-  border-color: var(--amber-line);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #1f2937;
+  border-color: #b45309;
 }
 .lifemap-hc-status[data-status="tested"] {
-  background: var(--info-bg);
-  color: var(--info);
-  border-color: var(--info-line);
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  color: #fff;
+  border-color: #0e7490;
 }
 
 /* ============================================================
