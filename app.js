@@ -2815,7 +2815,7 @@
       }),
     );
   }
-  function startFocus(presetId, mode = "timer") {
+  function startFocus(presetId) {
     const p = presetById(presetId);
     if (!p) {
       notify("আগে একটি Saved Session বেছে নাও।");
@@ -2836,12 +2836,11 @@
       phaseElapsedBeforePause: 0,
       phaseIndex: 0,
       alerted: false,
-      mode: mode || "both",
-      trackingActionId: (mode || "both") !== "timer" ? p.actionId : null,
+      mode: "timer",
+      trackingActionId: null,
     };
-    if (state.focus.trackingActionId)
-      startTracking(state.focus.trackingActionId);
     persist();
+    focusApplyTracking("start");
     renderAll();
     switchPage("focus");
     notify("Focus Session শুরু হয়েছে।");
@@ -2855,14 +2854,14 @@
       f.pausedAt = nowISO();
       f.running = false;
       f.paused = true;
-      if (f.mode === "both" && state.tracking.activeActionId)
-        closeTrackingSegment(nowISO());
+      focusPauseTracking();
     } else {
       f.startedAt = nowISO();
       f.phaseStartedAt = nowISO();
       f.running = true;
       f.paused = false;
       f.pausedAt = null;
+      focusResumeTracking();
     }
     persist();
     renderAll();
@@ -2870,12 +2869,9 @@
   function stopFocus() {
     const f = state.focus;
     if (!f.running && !f.paused) return;
-    if (f.mode !== "timer" && state.tracking.activeActionId)
-      closeTrackingSegment(nowISO());
-    // Preserve the selected session across Stop
+    focusStopTracking();
     const keepPresetId = f.presetId;
-    const keepMode = f.mode || "timer";
-    state.focus = { ...seed().focus, presetId: keepPresetId, mode: keepMode };
+    state.focus = { ...seed().focus, presetId: keepPresetId };
     persist();
     renderAll();
     notify("Focus Session বন্ধ হয়েছে — Start চাপলে আবার শুরু হবে।");
@@ -2884,22 +2880,12 @@
     const f = state.focus,
       p = activePreset();
     if (!p || f.phaseIndex >= p.phases.length - 1) return;
-    const nextIndex = f.phaseIndex + 1;
-    if (f.mode !== "timer" && state.tracking.activeActionId)
-      closeTrackingSegment(nowISO());
-    f.phaseIndex = nextIndex;
+    f.phaseIndex = f.phaseIndex + 1;
     f.phaseStartedAt = nowISO();
     f.phaseElapsedBeforePause = 0;
     f.alerted = false;
-    const phase = p.phases[nextIndex];
-    if (f.mode !== "timer") {
-      const nextAction = phase.actionId || f.trackingActionId;
-      if (nextAction) {
-        f.trackingActionId = nextAction;
-        startTracking(nextAction);
-      }
-    }
     persist();
+    focusApplyTracking("next");
     renderAll();
     notify("পরের পর্যায় শুরু হয়েছে।");
   }
@@ -2909,24 +2895,12 @@
     if (!p || f.phaseIndex <= 0) return;
     if (!f.running && !f.paused) return;
 
-    const prevIndex = f.phaseIndex - 1;
-    if (f.mode !== "timer" && state.tracking.activeActionId)
-      closeTrackingSegment(nowISO());
-
-    f.phaseIndex = prevIndex;
+    f.phaseIndex = f.phaseIndex - 1;
     f.phaseStartedAt = nowISO();
     f.phaseElapsedBeforePause = 0;
     f.alerted = false;
-
-    const phase = p.phases[prevIndex];
-    if (f.mode !== "timer") {
-      const nextAction = phase.actionId || f.trackingActionId;
-      if (nextAction) {
-        f.trackingActionId = nextAction;
-        startTracking(nextAction);
-      }
-    }
     persist();
+    focusApplyTracking("prev");
     renderAll();
     notify("আগের phase-এ ফিরে গেছে।");
   }
@@ -3667,6 +3641,25 @@
     /* ---------- Focus Mode: add Focus / Break phase ---------- */
     $("addFocusPhase").addEventListener("click", () => addFocusPhase("focus"));
     $("addBreakPhase").addEventListener("click", () => addFocusPhase("break"));
+
+    /* ---------- Focus Mode: auto-track toggle ---------- */
+    $("focusLinkTracking")?.addEventListener("change", (e) => {
+      const p = presetById(state.focus.presetId || editingPresetId);
+      if (!p) return;
+      p.linkTracking = e.target.checked;
+      p.updatedAt = nowISO();
+      persist();
+      if (state.focus.running || state.focus.paused) {
+        if (p.linkTracking) focusApplyTracking("toggle-on");
+        else focusStopTracking();
+        renderAll();
+      }
+      notify(
+        e.target.checked
+          ? "✓ Auto-track চালু — phase-এর Action অনুযায়ী tracking হবে।"
+          : "Auto-track বন্ধ।",
+      );
+    });
 
     /* ---------- Focus Mode: dropdown change ---------- */
     $("focusPreset").addEventListener("change", () => {
@@ -5669,11 +5662,15 @@
     const rows = host.querySelectorAll(".phase-row");
     if (!rows.length) return;
 
-    const phases = [...rows].map((r) => ({
-      name: r.querySelector(".phase-name").value.trim() || "Phase",
-      minutes: phaseHM(r),
-      countUp: r.querySelector(".phase-countup").checked,
-    }));
+    const phases = [...rows].map((r) => {
+      const sel = r.querySelector(".phase-action");
+      return {
+        name: r.querySelector(".phase-name").value.trim() || "Phase",
+        minutes: phaseHM(r),
+        countUp: r.querySelector(".phase-countup").checked,
+        actionId: sel ? sel.value || null : null,
+      };
+    });
 
     p.phases = phases;
     p.updatedAt = nowISO();
@@ -5718,7 +5715,7 @@
     renderFocusMini();
   }
   function renderDashboardPhaseEditor(
-    phases = [{ name: "Focus", minutes: 25, countUp: true }],
+    phases = [{ name: "Focus", minutes: 25, countUp: true, actionId: null }],
   ) {
     const host = $("dashboardPhaseEditor");
     if (!host) return;
@@ -5729,6 +5726,16 @@
       return;
     }
 
+    const acts = activeActions();
+    const actionOptions = (sel) =>
+      '<option value="">— কোনো Action না —</option>' +
+      acts
+        .map(
+          (a) =>
+            `<option value="${escapeHTML(a.id)}"${sel === a.id ? " selected" : ""}>${escapeHTML((a.emoji ? a.emoji + " " : "") + a.name)}</option>`,
+        )
+        .join("");
+
     host.innerHTML = phases
       .map((p, i) => {
         const total = Number(p.minutes) || 0,
@@ -5736,34 +5743,44 @@
           m = total % 60;
         const ot = p.countUp !== false;
         return `<div class="phase-row item">
-        <div class="phase-idx">${i + 1}</div>
-        <div class="field content">
-          <label>Phase name</label>
-          <input class="phase-name" value="${escapeHTML(p.name)}">
-        </div>
-        <div class="field phase-num">
-          <label>ঘণ্টা</label>
-          <input class="phase-hours" type="number" min="0" value="${h}">
-        </div>
-        <div class="field phase-num">
-          <label>মিনিট</label>
-          <input class="phase-mins" type="number" min="0" max="59" value="${m}">
-        </div>
-        <label class="checkboxrow switch" title="Overtime">
-          <input type="checkbox" class="phase-countup" ${ot ? "checked" : ""}>
-          <span>Overtime</span>
-        </label>
-        <button class="small danger" type="button" data-phase-remove="${i}" aria-label="Remove phase">✕</button>
-      </div>`;
+          <div class="phase-main-row">
+            <div class="phase-idx">${i + 1}</div>
+            <div class="field content">
+              <label>Phase name</label>
+              <input class="phase-name" value="${escapeHTML(p.name)}">
+            </div>
+            <div class="field phase-num">
+              <label>ঘণ্টা</label>
+              <input class="phase-hours" type="number" min="0" value="${h}">
+            </div>
+            <div class="field phase-num">
+              <label>মিনিট</label>
+              <input class="phase-mins" type="number" min="0" max="59" value="${m}">
+            </div>
+            <label class="checkboxrow switch" title="Overtime">
+              <input type="checkbox" class="phase-countup" ${ot ? "checked" : ""}>
+              <span>Overtime</span>
+            </label>
+            <button class="small danger" type="button" data-phase-remove="${i}" aria-label="Remove phase">✕</button>
+          </div>
+          <div class="phase-action-row">
+            <label>Action</label>
+            <select class="phase-action">${actionOptions(p.actionId)}</select>
+          </div>
+        </div>`;
       })
       .join("");
 
     const collect = () =>
-      [...host.querySelectorAll(".phase-row")].map((r) => ({
-        name: r.querySelector(".phase-name").value,
-        minutes: phaseHM(r),
-        countUp: r.querySelector(".phase-countup").checked,
-      }));
+      [...host.querySelectorAll(".phase-row")].map((r) => {
+        const sel = r.querySelector(".phase-action");
+        return {
+          name: r.querySelector(".phase-name").value,
+          minutes: phaseHM(r),
+          countUp: r.querySelector(".phase-countup").checked,
+          actionId: sel ? sel.value || null : null,
+        };
+      });
 
     host.querySelectorAll("[data-phase-remove]").forEach((b) =>
       b.addEventListener("click", () => {
@@ -5787,6 +5804,9 @@
     const nameInput = $("dashboardFocusName");
     if (nameInput) nameInput.value = p ? p.name : "";
 
+    const linkToggle = $("focusLinkTracking");
+    if (linkToggle) linkToggle.checked = p ? !!p.linkTracking : false;
+
     renderDashboardPhaseEditor(
       p && p.phases && p.phases.length ? p.phases : [],
     );
@@ -5798,6 +5818,77 @@
     renderFocus();
   }
 
+  /* ---------- Focus ↔ Tracking integration helpers ---------- */
+
+  function focusCurrentPhase() {
+    const p = activePreset();
+    if (!p || !p.phases) return null;
+    return p.phases[state.focus.phaseIndex] || null;
+  }
+
+  function focusApplyTracking(reason = "") {
+    const f = state.focus;
+    const p = activePreset();
+    if (!p) return;
+
+    const phase = focusCurrentPhase();
+    const wantTracking = !!p.linkTracking && !!(phase && phase.actionId);
+    const targetAction = wantTracking ? phase.actionId : null;
+    const currentAction = state.tracking.activeActionId;
+
+    // Not supposed to track → stop what we started (nothing else)
+    if (!wantTracking) {
+      if (f.trackingActionId && currentAction === f.trackingActionId) {
+        closeTrackingSegment(nowISO());
+      }
+      f.trackingActionId = null;
+      persist();
+      return;
+    }
+
+    // Same action already tracking → continuation, no log split
+    if (currentAction === targetAction) {
+      f.trackingActionId = targetAction;
+      persist();
+      return;
+    }
+
+    // Different action (or nothing) → stop current, start new
+    if (currentAction) closeTrackingSegment(nowISO());
+    startTracking(targetAction);
+    f.trackingActionId = targetAction;
+    persist();
+  }
+
+  function focusPauseTracking() {
+    const f = state.focus;
+    if (!f.trackingActionId) return;
+    if (state.tracking.activeActionId !== f.trackingActionId) return;
+    if (state.tracking.paused) return;
+    pauseTracking();
+  }
+
+  function focusResumeTracking() {
+    const f = state.focus;
+    if (!f.trackingActionId) return;
+    if (state.tracking.activeActionId !== f.trackingActionId) return;
+    if (!state.tracking.paused) return;
+    resumeTracking();
+  }
+
+  function focusStopTracking() {
+    const f = state.focus;
+    if (!f.trackingActionId) return;
+    if (state.tracking.activeActionId !== f.trackingActionId) {
+      f.trackingActionId = null;
+      persist();
+      return;
+    }
+    closeTrackingSegment(nowISO());
+    f.trackingActionId = null;
+    persist();
+  }
+
   function createNewFocusSession() {
     const p = {
       id: uid("preset"),
@@ -5805,9 +5896,10 @@
       actionId: null,
       countUp: true,
       alert: true,
+      linkTracking: true,
       phases: [
-        { name: "Focus", minutes: 25, countUp: true },
-        { name: "Break", minutes: 5, countUp: true },
+        { name: "Focus", minutes: 25, countUp: true, actionId: null },
+        { name: "Break", minutes: 5, countUp: true, actionId: null },
       ],
       createdAt: nowISO(),
       updatedAt: nowISO(),
@@ -5856,15 +5948,20 @@
     }
     const host = $("dashboardPhaseEditor");
     if (!host) return;
-    const current = [...host.querySelectorAll(".phase-row")].map((r) => ({
-      name: r.querySelector(".phase-name").value.trim() || "Phase",
-      minutes: phaseHM(r),
-      countUp: r.querySelector(".phase-countup").checked,
-    }));
+    const current = [...host.querySelectorAll(".phase-row")].map((r) => {
+      const sel = r.querySelector(".phase-action");
+      return {
+        name: r.querySelector(".phase-name").value.trim() || "Phase",
+        minutes: phaseHM(r),
+        countUp: r.querySelector(".phase-countup").checked,
+        actionId: sel ? sel.value || null : null,
+      };
+    });
     current.push({
       name: type === "break" ? "Break" : "Focus",
       minutes: 0,
       countUp: false,
+      actionId: null,
     });
     renderDashboardPhaseEditor(current);
     syncPhaseEditorToPreset();
