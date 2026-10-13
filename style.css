@@ -3148,6 +3148,21 @@ html[data-theme="dark"] #lifeos-userbar strong {
   animation: fabGlow 1.8s ease-in-out infinite;
 }
 
+.tracking-fab-wrap.paused .tracking-fab-btn {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  animation: none;
+  box-shadow:
+    0 14px 30px -10px #d97706,
+    0 4px 12px rgba(15, 23, 42, 0.15);
+}
+
+.tracking-fab-wrap.paused .tracking-fab-timer {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  box-shadow:
+    0 10px 20px -10px #d97706,
+    0 2px 8px rgba(15, 23, 42, 0.15);
+}
+
 @keyframes fabGlow {
   0%,
   100% {

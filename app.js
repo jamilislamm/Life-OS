@@ -127,7 +127,14 @@
       reminders: [],
       reviews: {},
       settings: { weekStart: 1 },
-      tracking: { activeActionId: null, segmentStart: null },
+      tracking: {
+        activeActionId: null,
+        segmentStart: null,
+        accumulatedSeconds: 0,
+        paused: false,
+        pausedAt: null,
+        originalStartAt: null,
+      },
       focus: {
         presetId: null,
         running: false,
@@ -305,11 +312,13 @@
     return p && p.phases ? p.phases[state.focus.phaseIndex] || null : null;
   }
   function currentTrackingSeconds() {
-    if (!state.tracking.activeActionId || !state.tracking.segmentStart)
-      return 0;
-    return Math.max(
-      0,
-      (Date.now() - new Date(state.tracking.segmentStart).getTime()) / 1000,
+    const t = state.tracking;
+    if (!t.activeActionId) return 0;
+    const acc = Number(t.accumulatedSeconds) || 0;
+    if (t.paused || !t.segmentStart) return acc;
+    return (
+      acc +
+      Math.max(0, (Date.now() - new Date(t.segmentStart).getTime()) / 1000)
     );
   }
   function focusElapsed() {
@@ -436,18 +445,47 @@
   }
   function closeTrackingSegment(endAt = nowISO()) {
     const t = state.tracking;
-    if (!t.activeActionId || !t.segmentStart) {
+
+    const resetTracking = () => {
       t.activeActionId = null;
       t.segmentStart = null;
+      t.accumulatedSeconds = 0;
+      t.paused = false;
+      t.pausedAt = null;
+      t.originalStartAt = null;
+    };
+
+    if (!t.activeActionId) {
+      resetTracking();
       persist();
       return;
     }
-    const start = new Date(t.segmentStart),
-      end = new Date(endAt);
+
+    const hadPause = (Number(t.accumulatedSeconds) || 0) > 0;
+    const totalSeconds = currentTrackingSeconds();
     const actionId = t.activeActionId;
-    if (end > start) splitAndLogInterval(actionId, start, end, "tracked");
-    t.activeActionId = null;
-    t.segmentStart = null;
+
+    if (totalSeconds > 0) {
+      if (!hadPause && t.segmentStart) {
+        // No pause → keep the interval-splitting behaviour so logs
+        // still respect midnight boundaries.
+        const start = new Date(t.segmentStart);
+        const end = new Date(endAt);
+        if (end > start) splitAndLogInterval(actionId, start, end, "tracked");
+      } else {
+        // Had pauses → save a single aggregated entry with total time.
+        addLog({
+          actionId,
+          startAt: t.originalStartAt,
+          endAt,
+          durationSeconds: totalSeconds,
+          date: localDate(),
+          kind: "tracked",
+        });
+      }
+    }
+
+    resetTracking();
     persist();
   }
   function splitAndLogInterval(
@@ -496,6 +534,10 @@
     closeTrackingSegment(nowISO());
     state.tracking.activeActionId = actionId;
     state.tracking.segmentStart = nowISO();
+    state.tracking.accumulatedSeconds = 0;
+    state.tracking.paused = false;
+    state.tracking.pausedAt = null;
+    state.tracking.originalStartAt = nowISO();
     persist();
     renderAll();
     notify(actionName(actionId) + " tracking শুরু হয়েছে।");
@@ -508,6 +550,41 @@
     closeTrackingSegment(nowISO());
     renderAll();
     notify("Time Tracking বন্ধ এবং সেভ হয়েছে।");
+  }
+
+  function pauseTracking() {
+    const t = state.tracking;
+    if (!t.activeActionId) return;
+    if (t.paused) return;
+    const now = Date.now();
+    const segStart = t.segmentStart ? new Date(t.segmentStart).getTime() : now;
+    const segSeconds = Math.max(0, (now - segStart) / 1000);
+    t.accumulatedSeconds = (Number(t.accumulatedSeconds) || 0) + segSeconds;
+    t.segmentStart = null;
+    t.paused = true;
+    t.pausedAt = nowISO();
+    persist();
+    renderAll();
+    notify("⏸ Time Tracking paused।");
+  }
+
+  function resumeTracking() {
+    const t = state.tracking;
+    if (!t.activeActionId) return;
+    if (!t.paused) return;
+    t.segmentStart = nowISO();
+    t.paused = false;
+    t.pausedAt = null;
+    persist();
+    renderAll();
+    notify("▶ Time Tracking resumed।");
+  }
+
+  function toggleTrackingPause() {
+    const t = state.tracking;
+    if (!t.activeActionId) return;
+    if (t.paused) resumeTracking();
+    else pauseTracking();
   }
   function createReminder({ name, emoji, schedule }) {
     const first = computeInitialDueDate(schedule, localDate()) || localDate();
@@ -2103,12 +2180,30 @@
   function renderTrackingMini() {
     const a = activeAction(),
       s = currentTrackingSeconds();
+    const paused = !!state.tracking.paused;
+    const pillCls = paused ? "pill" : "pill green";
+    const pillTxt = paused ? "⏸ Paused" : "Tracking";
+    const since = state.tracking.originalStartAt
+      ? new Date(state.tracking.originalStartAt).toLocaleTimeString()
+      : "—";
+
     $("trackingMini").innerHTML = a
-      ? `<div class="row"><span class="pill green">Tracking</span><strong>${escapeHTML(actionEmojiName(a))}</strong></div><div class="metric" style="margin-top:10px">${fmt(s)}</div><div class="tiny">Segment started ${new Date(state.tracking.segmentStart).toLocaleTimeString()}</div>`
+      ? `<div class="row"><span class="${pillCls}">${pillTxt}</span><strong>${escapeHTML(actionEmojiName(a))}</strong></div><div class="metric" style="margin-top:10px">${fmt(s)}</div><div class="tiny">${paused ? "Paused at " + new Date(state.tracking.pausedAt).toLocaleTimeString() : "শুরু: " + since}</div>`
       : '<div class="muted">এখন কোনো Action track হচ্ছে না।</div>';
+
     $("trackingCurrent").innerHTML = a
-      ? `<div class="notice"><strong>${escapeHTML(actionEmojiName(a))}</strong> track হচ্ছে<br><span class="metric">${fmt(s)}</span><br><span class="tiny">শুরু: ${new Date(state.tracking.segmentStart).toLocaleString()}</span></div>`
+      ? `<div class="notice${paused ? "" : " active"}"><strong>${escapeHTML(actionEmojiName(a))}</strong> ${paused ? "paused" : "track হচ্ছে"}<br><span class="metric">${fmt(s)}</span><br><span class="tiny">${paused ? "Paused at: " + new Date(state.tracking.pausedAt).toLocaleString() : "শুরু: " + since}</span></div>`
       : '<div class="empty">কোনো চলমান Time Tracking নেই।</div>';
+
+    // Sync pause / resume button labels & disabled state
+    const isTracking = !!a;
+    const label = paused ? "Resume" : "Pause";
+    ["pauseTrackingBtn", "trackingPause"].forEach((id) => {
+      const btn = $(id);
+      if (!btn) return;
+      btn.textContent = label;
+      btn.disabled = !isTracking;
+    });
   }
 
   /* ---------- Floating Time Tracking Widget ---------- */
@@ -2138,13 +2233,17 @@
     if (!wrap) return;
     const a = activeAction();
     const isTracking = !!a;
-    wrap.classList.toggle("tracking", isTracking);
+    const paused = !!state.tracking.paused;
+
+    wrap.classList.toggle("tracking", isTracking && !paused);
+    wrap.classList.toggle("paused", isTracking && paused);
 
     const timer = $("trackingFabTimer");
     if (timer) {
       if (isTracking) {
         timer.classList.remove("hidden");
-        timer.textContent = fmt(currentTrackingSeconds());
+        timer.textContent =
+          (paused ? "⏸ " : "") + fmt(currentTrackingSeconds());
       } else {
         timer.classList.add("hidden");
       }
@@ -2156,7 +2255,8 @@
         status.classList.add("active");
         status.innerHTML =
           `<strong>${escapeHTML(actionEmojiName(a))}</strong>` +
-          `<span class="tracking-fab-live">${fmt(currentTrackingSeconds())}</span>`;
+          `<span class="tracking-fab-live">${fmt(currentTrackingSeconds())}</span>` +
+          (paused ? `<span class="tiny">Paused</span>` : "");
       } else {
         status.classList.remove("active");
         status.textContent = "কোনো Action track হচ্ছে না।";
@@ -2165,6 +2265,12 @@
 
     const stopBtn = $("trackingFabStop");
     if (stopBtn) stopBtn.disabled = !isTracking;
+
+    const pauseBtn = $("trackingFabPause");
+    if (pauseBtn) {
+      pauseBtn.disabled = !isTracking;
+      pauseBtn.textContent = paused ? "Resume" : "Pause";
+    }
   }
 
   function openTrackingFabPanel() {
@@ -2212,6 +2318,11 @@
 
     $("trackingFabStop")?.addEventListener("click", () => {
       stopTracking();
+      updateTrackingFab();
+    });
+
+    $("trackingFabPause")?.addEventListener("click", () => {
+      toggleTrackingPause();
       updateTrackingFab();
     });
 
@@ -3160,10 +3271,12 @@
       startTracking($("startTrackingAction").value),
     );
     $("stopTrackingBtn").addEventListener("click", stopTracking);
+    $("pauseTrackingBtn").addEventListener("click", toggleTrackingPause);
     $("trackingStart").addEventListener("click", () =>
       startTracking($("trackingAction").value),
     );
     $("trackingStop").addEventListener("click", stopTracking);
+    $("trackingPause").addEventListener("click", toggleTrackingPause);
     $("actionForm").addEventListener("submit", (e) => {
       e.preventDefault();
       const id = $("actionEditId").value;
