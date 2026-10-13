@@ -607,6 +607,7 @@
 
   let lifeMapSelectedId = null;
   let lifeMapSelectedIds = new Set();
+  let lifeMapAdditiveMode = false;
   let lifeMapNeedsFit = true;
   let lifeMapZoom = 1;
   let lifeMapPanX = 0;
@@ -1110,10 +1111,12 @@
       const id = el.dataset.lmNode;
       const isSel = lifeMapSelectedIds.has(id);
       el.classList.toggle("selected", isSel && id === lifeMapSelectedId);
-      el.classList.toggle(
-        "multi-selected",
-        isSel && lifeMapSelectedIds.size > 1,
-      );
+      // Dashed outline shows whenever the user is in an "additive"
+      // selection session — even if only one node is selected — so
+      // Ctrl/Shift+first-click gives immediate visual feedback.
+      const showMulti =
+        isSel && (lifeMapSelectedIds.size > 1 || lifeMapAdditiveMode);
+      el.classList.toggle("multi-selected", showMulti);
     });
   }
 
@@ -4837,6 +4840,7 @@
       const nodeEl = event.target.closest("[data-lm-node]");
       const node = nodeEl ? lifeMapNodeById(nodeEl.dataset.lmNode) : null;
       const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+      lifeMapAdditiveMode = additive;
 
       if (node) {
         if (lifeMapSelectedConnectionId) lifeMapSelectedConnectionId = null;
