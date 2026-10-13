@@ -602,6 +602,7 @@
     blocks: "Blocks",
     depends: "Depends on",
     addresses: "Addresses",
+    parent: "Parent",
   };
 
   let lifeMapSelectedId = null;
@@ -712,6 +713,38 @@
     if (!state.lifeMap) {
       state.lifeMap = normalizeLifeMap(null);
     }
+    // Auto-migrate legacy parentId → "parent" connections once.
+    // Runs on the first lifeMapData() call after page load.
+    if (!state.lifeMap._migrated) {
+      const map = state.lifeMap;
+      const nodeIds = new Set(map.nodes.map((n) => n.id));
+      const existing = new Set(
+        map.connections
+          .filter((c) => c.relation === "parent")
+          .map((c) => c.sourceId + "→" + c.targetId),
+      );
+      let added = 0;
+      map.nodes.forEach((node) => {
+        if (!node.parentId) return;
+        if (!nodeIds.has(node.parentId)) return;
+        const key = node.parentId + "→" + node.id;
+        if (existing.has(key)) return;
+        map.connections.push({
+          id: uid("lmconn"),
+          sourceId: node.parentId,
+          targetId: node.id,
+          relation: "parent",
+          createdAt: nowISO(),
+        });
+        existing.add(key);
+        added++;
+      });
+      map._migrated = true;
+      if (added > 0) {
+        persist();
+        console.log("[Life Map] Migrated " + added + " parent connections");
+      }
+    }
     return state.lifeMap;
   }
 
@@ -801,11 +834,21 @@
 
     Object.assign(node, updates, { updatedAt: nowISO() });
 
-    // A hierarchy edge is represented by parentId, not a second
-    // independent connection.
-    map.connections = map.connections.filter(
-      (connection) => connection.sourceId !== id || connection.targetId !== id,
-    );
+    // If parentId changed, sync the corresponding "parent" connection.
+    if ("parentId" in updates) {
+      map.connections = map.connections.filter(
+        (c) => !(c.relation === "parent" && c.targetId === id),
+      );
+      if (updates.parentId) {
+        map.connections.push({
+          id: uid("lmconn"),
+          sourceId: updates.parentId,
+          targetId: id,
+          relation: "parent",
+          createdAt: nowISO(),
+        });
+      }
+    }
 
     persist();
     return true;
@@ -886,19 +929,39 @@
       relation,
       createdAt: nowISO(),
     });
+
+    // Keep legacy parentId in sync for backward-compat helpers
+    // (computeChildPosition, collectDescendants etc.)
+    if (relation === "parent") {
+      const child = lifeMapNodeById(targetId);
+      if (child && !child.parentId) {
+        child.parentId = sourceId;
+      }
+    }
+
     persist();
     return true;
   }
 
   function lifeMapDisconnect(connectionId) {
     const map = lifeMapData();
-    const previousLength = map.connections.length;
+    const conn = map.connections.find((c) => c.id === connectionId);
+    if (!conn) return;
 
-    map.connections = map.connections.filter(
-      (connection) => connection.id !== connectionId,
-    );
+    map.connections = map.connections.filter((c) => c.id !== connectionId);
 
-    if (map.connections.length !== previousLength) persist();
+    // If a parent connection was removed, keep the child's parentId in sync.
+    if (conn.relation === "parent") {
+      const child = lifeMapNodeById(conn.targetId);
+      if (child) {
+        const remaining = map.connections.filter(
+          (c) => c.relation === "parent" && c.targetId === child.id,
+        );
+        child.parentId = remaining.length > 0 ? remaining[0].sourceId : null;
+      }
+    }
+
+    persist();
   }
 
   function lifeMapRenderParentOptions(selectedNode) {
@@ -1197,16 +1260,18 @@
 
     const edges = [];
 
-    // Hierarchy (parent-child) — always rendered, dimmed when connect mode ON
-    nodes.forEach((child) => {
-      if (!child.parentId) return;
-      const parent = nodeMap.get(child.parentId);
-      if (!parent) return;
+    // Hierarchy (parent-child) — sourced from "parent" connections,
+    // always rendered even when connect mode is OFF.
+    lifeMapData().connections.forEach((conn) => {
+      if (conn.relation !== "parent") return;
+      const source = nodeMap.get(conn.sourceId);
+      const target = nodeMap.get(conn.targetId);
+      if (!source || !target) return;
       edges.push({
-        source: parent,
-        target: child,
+        source,
+        target,
         relation: "hierarchy",
-        id: null,
+        id: conn.id,
       });
     });
 
@@ -1214,6 +1279,7 @@
     if (lifeMapConnectionMode) {
       const filter = lifeMapConnectionFilter;
       lifeMapData().connections.forEach((conn) => {
+        if (conn.relation === "parent") return;
         if (filter !== "all" && conn.relation !== filter) return;
         const source = nodeMap.get(conn.sourceId);
         const target = nodeMap.get(conn.targetId);
@@ -1255,7 +1321,15 @@
               : "";
           const cls = `lifemap-edge${dimmed}${selected ? " selected" : ""}`;
           const dataAttr = e.id ? ` data-conn-id="${escapeHTML(e.id)}"` : "";
-          return `<path class="${cls}" data-relation="${escapeHTML(e.relation)}"${dataAttr} marker-end="url(#lm-arrow-${e.relation})" d="${path}"></path>`;
+
+          // Hierarchy edges get an invisible wider hit-zone for click
+          // selection. Non-hierarchy edges keep dot-based selection.
+          const hitZone =
+            e.relation === "hierarchy" && e.id
+              ? `<path class="lifemap-edge-hit" data-conn-id="${escapeHTML(e.id)}" d="${path}"></path>`
+              : "";
+
+          return `<path class="${cls}" data-relation="${escapeHTML(e.relation)}"${dataAttr} marker-end="url(#lm-arrow-${e.relation})" d="${path}"></path>${hitZone}`;
         })
         .join("");
 
@@ -1266,11 +1340,22 @@
     const host = $("lifeMapConnectionDots");
     if (!host) return;
     host.innerHTML = "";
-    if (!lifeMapConnectionMode) return;
 
     const filter = lifeMapConnectionFilter;
     lifeMapData().connections.forEach((conn) => {
-      if (filter !== "all" && conn.relation !== filter) return;
+      const isParent = conn.relation === "parent";
+
+      if (isParent) {
+        // Hierarchy edges stay dot-less by default — dots only appear
+        // when this specific connection is selected.
+        if (conn.id !== lifeMapSelectedConnectionId) return;
+      } else {
+        // Non-hierarchy connections keep the classic behaviour:
+        // dots appear whenever connect mode is ON and filter matches.
+        if (!lifeMapConnectionMode) return;
+        if (filter !== "all" && conn.relation !== filter) return;
+      }
+
       const rs = rects.get(conn.sourceId);
       const rt = rects.get(conn.targetId);
       if (!rs || !rt) return;
@@ -1467,10 +1552,18 @@
       y: pos.y,
     });
 
+    // Create the hierarchy connection too
+    lifeMapData().connections.push({
+      id: uid("lmconn"),
+      sourceId: parent.id,
+      targetId: node.id,
+      relation: "parent",
+      createdAt: nowISO(),
+    });
+
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
-
     lifeMapViewMode = "map";
     renderLifeMap();
     notify("Child node তৈরি হয়েছে।");
@@ -4765,17 +4858,17 @@
         const end = dot.dataset.end;
         const conn = lifeMapData().connections.find((c) => c.id === connId);
         if (conn) {
-          if (lifeMapSelectedConnectionId === connId) {
-            lifeMapSelectedConnectionId = null;
-            renderLifeMap();
-            return;
-          }
+          // Dot is a drag handle — pointerdown ALWAYS starts an endpoint
+          // drag. Selection is a side-effect: if not selected yet, select
+          // it. Never toggle off; clicking an already-selected dot must
+          // still allow dragging.
           lifeMapSelectedConnectionId = connId;
           lifeMapEndpointDrag = {
             connectionId: connId,
             end,
             anchorId: end === "source" ? conn.targetId : conn.sourceId,
             pointer: { x: event.clientX, y: event.clientY },
+            moved: false,
           };
           lifeMapStartAutoPan();
           try {
@@ -4783,6 +4876,34 @@
           } catch (_) {}
           renderLifeMap();
         }
+        return;
+      }
+
+      // Hierarchy line hit-zone — click anywhere on the line to select
+      const hit = event.target.closest(".lifemap-edge-hit");
+      if (hit) {
+        event.preventDefault();
+        const connId = hit.dataset.connId;
+        if (lifeMapSelectedConnectionId === connId) {
+          lifeMapSelectedConnectionId = null;
+        } else {
+          lifeMapSelectedConnectionId = connId;
+          lifeMapSelectedIds.clear();
+          lifeMapSelectedId = null;
+        }
+        renderLifeMap();
+        // Continue as a canvas pan so dragging from the line still pans
+        lifeMapDrag = {
+          kind: "pan",
+          startX: event.clientX,
+          startY: event.clientY,
+          originX: lifeMapPanX,
+          originY: lifeMapPanY,
+          moved: false,
+        };
+        try {
+          canvas.setPointerCapture(event.pointerId);
+        } catch (_) {}
         return;
       }
 

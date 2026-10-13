@@ -1632,6 +1632,15 @@ html[data-theme="dark"] .lifemap-canvas {
 .lifemap-edges-temp {
   z-index: 4;
 }
+.lifemap-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 26;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
 .lifemap-nodes {
   z-index: 2;
   pointer-events: none;
