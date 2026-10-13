@@ -2505,9 +2505,8 @@ html[data-theme="dark"] .lifemap-canvas {
     padding: 18px;
   }
 }
-/* ============================================================
-   LIFE MAP FULLSCREEN (real Fullscreen API)
-   ============================================================ */
+
+/* --- FULLSCREEN (v2, grid-based height propagation) --- */
 .lifemap-page:fullscreen {
   padding: 12px;
   background: var(--bg);
@@ -2526,33 +2525,34 @@ html[data-theme="dark"] .lifemap-canvas {
 }
 .lifemap-page:fullscreen .lifemap-workspace {
   min-height: 0;
+  height: 100%;
   overflow: hidden;
+  display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
-.lifemap-page:fullscreen .lifemap-map-panel,
-.lifemap-map-panel {
-  padding: 12px;
-  border-radius: 17px;
+.lifemap-page:fullscreen .lifemap-map-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
 }
 .lifemap-page:fullscreen .lifemap-panel-heading {
-  flex-shrink: 0;
-}
-.lifemap-page:fullscreen .lifemap-canvas {
-  flex: 1 1 auto;
-  height: auto;
   min-height: 0;
 }
-.lifemap-page:fullscreen .lifemap-map-footer {
-  flex-shrink: 0;
+.lifemap-page:fullscreen .lifemap-canvas {
+  height: 100%;
+  min-height: 200px;
+  max-height: none;
+  flex: none;
 }
-.lifemap-map-panel {
-  padding: 12px;
-  border-radius: 17px;
-}
-/* Fullscreen-এ popup গুলো উপরে রাখতে z-index boost */
 .lifemap-page:fullscreen #lifeMapNodeModal,
 .lifemap-page:fullscreen #lifeMapContextMenu,
-.lifemap-page:fullscreen #lifeMapTypePicker {
+.lifemap-page:fullscreen #lifeMapTypePicker,
+.lifemap-page:fullscreen #lifeMapConfirmModal,
+.lifemap-page:fullscreen #lifeMapFilterPopover {
   z-index: 1000;
 }
 /* ============================================================

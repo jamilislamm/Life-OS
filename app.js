@@ -5217,10 +5217,22 @@
           ? "✕ Exit Fullscreen"
           : "⛶";
       if (typeof lifeMapRelocatePopups === "function") lifeMapRelocatePopups();
-      requestAnimationFrame(() => {
-        lifeMapRenderEdges();
-        lifeMapApplyViewport();
-      });
+
+      // Poll until the canvas has real dimensions, then re-apply the
+      // current viewport. We deliberately do NOT call fitView here so
+      // the user's pan/zoom state carries over into fullscreen.
+      const refit = (attempt = 0) => {
+        const canvas = $("lifeMapCanvas");
+        if (!canvas) return;
+        if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
+          lifeMapRenderEdges();
+          lifeMapApplyViewport();
+          lifeMapApplyFilter();
+        } else if (attempt < 25) {
+          setTimeout(() => refit(attempt + 1), 40);
+        }
+      };
+      requestAnimationFrame(() => refit(0));
     });
 
     /* ---- Disconnect from inspector list ---- */
