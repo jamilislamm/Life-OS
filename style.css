@@ -2293,105 +2293,6 @@ html[data-theme="dark"] .lifemap-canvas {
   font-size: 11px;
 }
 
-/* Tree / List */
-.lifemap-tree-panel {
-  display: grid;
-  gap: 12px;
-}
-.lifemap-tree {
-  display: grid;
-  gap: 8px;
-  overflow-wrap: anywhere;
-}
-.lifemap-tree-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel-2);
-  cursor: pointer;
-  transition:
-    background 0.18s ease,
-    border-color 0.18s ease;
-}
-.lifemap-tree-item:hover {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-.lifemap-tree-item.selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.lifemap-tree-item.multi-selected {
-  border-color: var(--accent);
-  border-style: dashed;
-}
-.lifemap-tree-item-content {
-  flex: 1;
-  min-width: 0;
-}
-.lifemap-tree-item strong {
-  display: block;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.lifemap-tree-item small {
-  display: block;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-.lifemap-tree-actions {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  flex-shrink: 0;
-}
-.lifemap-tree-btn {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-.lifemap-tree-btn:hover {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  border-color: var(--accent);
-}
-.lifemap-tree-btn[data-lm-addchild]:hover {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
-.lifemap-tree-children {
-  display: grid;
-  gap: 8px;
-  margin-left: 16px;
-  padding-left: 12px;
-  border-left: 1px solid var(--line-strong);
-}
-.lifemap-tree-empty {
-  padding: 20px;
-  color: var(--muted);
-  font-size: 13px;
-  text-align: center;
-}
-
 /* Search highlight */
 .lifemap-node.search-match {
   outline: 2px solid var(--amber);
@@ -2585,8 +2486,7 @@ html[data-theme="dark"] .lifemap-canvas {
     width: 100%;
     max-width: none;
   }
-  .lifemap-map-panel,
-  .lifemap-tree-panel {
+  .lifemap-map-panel {
     padding: 12px;
     border-radius: 17px;
   }
@@ -2630,12 +2530,9 @@ html[data-theme="dark"] .lifemap-canvas {
   grid-template-columns: minmax(0, 1fr);
 }
 .lifemap-page:fullscreen .lifemap-map-panel,
-.lifemap-page:fullscreen .lifemap-tree-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  margin: 0;
+.lifemap-map-panel {
+  padding: 12px;
+  border-radius: 17px;
 }
 .lifemap-page:fullscreen .lifemap-panel-heading {
   flex-shrink: 0;
@@ -2648,10 +2545,9 @@ html[data-theme="dark"] .lifemap-canvas {
 .lifemap-page:fullscreen .lifemap-map-footer {
   flex-shrink: 0;
 }
-.lifemap-page:fullscreen .lifemap-tree {
-  flex: 1;
-  overflow-y: auto;
-  padding-right: 4px;
+.lifemap-map-panel {
+  padding: 12px;
+  border-radius: 17px;
 }
 /* Fullscreen-এ popup গুলো উপরে রাখতে z-index boost */
 .lifemap-page:fullscreen #lifeMapNodeModal,

@@ -607,7 +607,6 @@
 
   let lifeMapSelectedId = null;
   let lifeMapSelectedIds = new Set();
-  let lifeMapViewMode = "map";
   let lifeMapNeedsFit = true;
   let lifeMapZoom = 1;
   let lifeMapPanX = 0;
@@ -1116,88 +1115,6 @@
         isSel && lifeMapSelectedIds.size > 1,
       );
     });
-    document.querySelectorAll("#lifeMapTree [data-lm-select]").forEach((el) => {
-      const id = el.dataset.lmSelect;
-      const isSel = lifeMapSelectedIds.has(id);
-      el.classList.toggle("selected", isSel && id === lifeMapSelectedId);
-      el.classList.toggle(
-        "multi-selected",
-        isSel && lifeMapSelectedIds.size > 1,
-      );
-    });
-  }
-
-  function lifeMapRenderTree() {
-    const host = $("lifeMapTree");
-    if (!host) return;
-
-    const nodes = lifeMapData().nodes;
-
-    if (!nodes.length) {
-      host.innerHTML =
-        '<div class="lifemap-tree-empty">এখনো কোনো Node তৈরি করা হয়নি।</div>';
-      return;
-    }
-
-    function renderBranch(node, path = new Set()) {
-      if (path.has(node.id)) return "";
-      const nextPath = new Set(path);
-      nextPath.add(node.id);
-
-      const isSel = lifeMapSelectedIds.has(node.id);
-      const isPrimary = isSel && node.id === lifeMapSelectedId;
-      const isMulti = isSel && lifeMapSelectedIds.size > 1;
-
-      const children = nodes.filter((child) => child.parentId === node.id);
-
-      return `
-        <div class="lifemap-tree-branch">
-          <div
-            class="lifemap-tree-item ${isPrimary ? "selected" : ""} ${isMulti ? "multi-selected" : ""}"
-            data-lm-select="${escapeHTML(node.id)}"
-            role="button"
-            tabindex="0"
-          >
-            <div class="lifemap-tree-item-content">
-              <strong>${escapeHTML(LIFE_MAP_TYPES[node.type]?.icon || "◇")} ${escapeHTML(node.name)}</strong>
-              <small>${escapeHTML(lifeMapTypeLabel(node.type))} · ${escapeHTML(lifeMapStatusLabel(node.status))}</small>
-            </div>
-            <div class="lifemap-tree-actions">
-              <button type="button" class="lifemap-tree-btn"
-                data-lm-addchild="${escapeHTML(node.id)}" title="Add child">+</button>
-              <button type="button" class="lifemap-tree-btn"
-                data-lm-edit="${escapeHTML(node.id)}" title="Edit">✎</button>
-            </div>
-          </div>
-          ${
-            children.length
-              ? `<div class="lifemap-tree-children">${children
-                  .map((child) => renderBranch(child, nextPath))
-                  .join("")}</div>`
-              : ""
-          }
-        </div>
-      `;
-    }
-
-    const roots = nodes.filter(
-      (node) => !node.parentId || !lifeMapNodeById(node.parentId),
-    );
-
-    const renderedIds = new Set();
-    function collectIds(node) {
-      if (renderedIds.has(node.id)) return;
-      renderedIds.add(node.id);
-      nodes.filter((child) => child.parentId === node.id).forEach(collectIds);
-    }
-    roots.forEach(collectIds);
-
-    const disconnected = nodes.filter((node) => !renderedIds.has(node.id));
-
-    host.innerHTML = [
-      ...roots.map((node) => renderBranch(node)),
-      ...disconnected.map((node) => renderBranch(node)),
-    ].join("");
   }
 
   function lifeMapIntersectRect(rect, toward) {
@@ -1465,24 +1382,8 @@
       .join("");
 
     lifeMapRenderEdges();
-    lifeMapRenderTree();
     lifeMapApplyViewport();
 
-    const treePanel = $("lifeMapTreePanel");
-    const mapPanel = $("lifeMapCanvas")?.closest(".lifemap-map-panel");
-
-    if (treePanel)
-      treePanel.classList.toggle("hidden", lifeMapViewMode !== "tree");
-    if (mapPanel)
-      mapPanel.classList.toggle("hidden", lifeMapViewMode === "tree");
-
-    const viewButton = $("lifeMapViewToggle");
-    if (viewButton) {
-      viewButton.setAttribute(
-        "aria-pressed",
-        String(lifeMapViewMode === "tree"),
-      );
-    }
     const connectButton = $("lifeMapConnectMode");
     if (connectButton) {
       connectButton.setAttribute("aria-pressed", String(lifeMapConnectionMode));
@@ -1564,7 +1465,6 @@
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
-    lifeMapViewMode = "map";
     renderLifeMap();
     notify("Child node তৈরি হয়েছে।");
   }
@@ -4120,7 +4020,6 @@
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
 
-    lifeMapViewMode = "map";
     renderLifeMap();
     notify("New Node তৈরি হয়েছে — Inspector থেকে Edit করো।");
   }
@@ -4129,7 +4028,6 @@
   let lifeMapFilterTypes = new Set();
   let lifeMapFilterStatuses = new Set();
   let lifeMapFilterMode = "and";
-
   const LIFEMAP_ALL_STATUSES = [
     "not-started",
     "in-progress",
@@ -4238,12 +4136,6 @@
       if (matches) matchCount++;
       el.classList.toggle("search-dim", hasFilter && !matches);
       el.classList.toggle("search-match", hasFilter && matches);
-    });
-
-    document.querySelectorAll("#lifeMapTree [data-lm-select]").forEach((el) => {
-      const node = lifeMapNodeById(el.dataset.lmSelect);
-      const matches = lifeMapMatchesFilter(node);
-      el.classList.toggle("search-dim", hasFilter && !matches);
     });
 
     const count = $("lifeMapNodeCount");
@@ -4475,7 +4367,6 @@
   function bindLifeMapEvents() {
     const canvas = $("lifeMapCanvas");
     const nodesHost = $("lifeMapNodes");
-    const treeHost = $("lifeMapTree");
     const form = $("lifeMapNodeForm");
     const modal = $("lifeMapNodeModal");
     const contextMenu = $("lifeMapContextMenu");
@@ -5261,17 +5152,6 @@
     });
     $("lifeMapFitView")?.addEventListener("click", lifeMapFitView);
 
-    $("lifeMapViewToggle")?.addEventListener("click", () => {
-      lifeMapViewMode = lifeMapViewMode === "map" ? "tree" : "map";
-      renderLifeMap();
-      if (lifeMapViewMode === "map") {
-        requestAnimationFrame(() => {
-          lifeMapRenderEdges();
-          lifeMapApplyViewport();
-        });
-      }
-    });
-
     $("lifeMapFullscreen")?.addEventListener("click", async () => {
       const page = document.querySelector(".lifemap-page");
       if (!page) return;
@@ -5294,64 +5174,6 @@
         lifeMapRenderEdges();
         lifeMapApplyViewport();
       });
-    });
-
-    /* ---- Tree click ---- */
-    treeHost?.addEventListener("click", (event) => {
-      const addBtn = event.target.closest("[data-lm-addchild]");
-      if (addBtn) {
-        event.stopPropagation();
-        lifeMapAddChild(addBtn.dataset.lmAddchild);
-        return;
-      }
-      const editBtn = event.target.closest("[data-lm-edit]");
-      if (editBtn) {
-        event.stopPropagation();
-        lifeMapOpenNodeModal(editBtn.dataset.lmEdit);
-        return;
-      }
-      const el = event.target.closest("[data-lm-select]");
-      if (!el) return;
-      const additive = event.shiftKey || event.ctrlKey || event.metaKey;
-      const nodeId = el.dataset.lmSelect;
-      const isAlreadySelected = lifeMapSelectedIds.has(nodeId);
-      if (!isAlreadySelected)
-        if (additive) {
-          lifeMapSelectNode(nodeId, true);
-        } else if (isAlreadySelected) {
-          lifeMapSelectedId = nodeId;
-          lifeMapRenderNodeSelection();
-        } else if (lifeMapMultiSelectMode) {
-          lifeMapSelectedIds = lifeMapCollectDescendants(nodeId);
-          lifeMapSelectedId = nodeId;
-          lifeMapRenderNodeSelection();
-        } else {
-          lifeMapSelectNode(nodeId, false);
-        }
-    });
-
-    /* ---- Tree keyboard ---- */
-    treeHost?.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      const el = event.target.closest("[data-lm-select]");
-      if (!el) return;
-      event.preventDefault();
-      const additive = event.shiftKey || event.ctrlKey || event.metaKey;
-      const nodeId = el.dataset.lmSelect;
-      const isAlreadySelected = lifeMapSelectedIds.has(nodeId);
-
-      if (additive) {
-        lifeMapSelectNode(nodeId, true);
-      } else if (isAlreadySelected) {
-        lifeMapSelectedId = nodeId;
-        lifeMapRenderNodeSelection();
-      } else if (lifeMapMultiSelectMode) {
-        lifeMapSelectedIds = lifeMapCollectDescendants(nodeId);
-        lifeMapSelectedId = nodeId;
-        lifeMapRenderNodeSelection();
-      } else {
-        lifeMapSelectNode(nodeId, false);
-      }
     });
 
     /* ---- Disconnect from inspector list ---- */
