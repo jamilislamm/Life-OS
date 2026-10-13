@@ -801,6 +801,52 @@
     return node;
   }
 
+  function lifeMapDuplicateNodes(sourceIds, offset = 0) {
+    if (!sourceIds || !sourceIds.length) return [];
+    const map = lifeMapData();
+    const idMap = new Map();
+    const newIds = [];
+
+    sourceIds.forEach((oldId) => {
+      const oldNode = lifeMapNodeById(oldId);
+      if (!oldNode) return;
+      const newId = uid("lmnode");
+      idMap.set(oldId, newId);
+      newIds.push(newId);
+      map.nodes.push({
+        id: newId,
+        name: oldNode.name,
+        type: oldNode.type,
+        status: oldNode.status,
+        parentId: null,
+        description: oldNode.description,
+        x: (Number(oldNode.x) || 0) + offset,
+        y: (Number(oldNode.y) || 0) + offset,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+      });
+    });
+
+    // Duplicate connections whose BOTH endpoints are inside the
+    // duplicated set. External connections are intentionally not
+    // copied — duplicate nodes start fresh, disconnected from the
+    // surrounding graph.
+    map.connections.forEach((conn) => {
+      if (idMap.has(conn.sourceId) && idMap.has(conn.targetId)) {
+        map.connections.push({
+          id: uid("lmconn"),
+          sourceId: idMap.get(conn.sourceId),
+          targetId: idMap.get(conn.targetId),
+          relation: conn.relation,
+          createdAt: nowISO(),
+        });
+      }
+    });
+
+    persist();
+    return newIds;
+  }
+
   function lifeMapSaveNode(id, updates) {
     const node = lifeMapNodeById(id);
     if (!node) return false;
@@ -1443,6 +1489,7 @@
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
+    lifeMapAdditiveMode = false;
     renderLifeMap();
     notify("Child node তৈরি হয়েছে।");
   }
@@ -1508,6 +1555,7 @@
 
     menu.innerHTML = `
       <button type="button" data-ctx-action="edit">✎ Edit${suffix}</button>
+      <button type="button" data-ctx-action="duplicate">⧉ Duplicate${suffix}</button>
       <div class="lifemap-ctx-sub">
         <button type="button" class="lifemap-ctx-sub-toggle">◐ Status${suffix} <span class="lifemap-ctx-arrow">›</span></button>
         <div class="lifemap-ctx-submenu">
@@ -3727,11 +3775,14 @@
      ============================================================ */
   function lifeMapCollectDescendants(rootId) {
     const data = lifeMapData();
+    // Build the parent→children map from the connections array, which
+    // is now the single source of truth for hierarchy. Using parentId
+    // here would miss duplicate-created nodes whose parentId is null.
     const byParent = new Map();
-    data.nodes.forEach((n) => {
-      if (!n.parentId) return;
-      if (!byParent.has(n.parentId)) byParent.set(n.parentId, []);
-      byParent.get(n.parentId).push(n.id);
+    data.connections.forEach((c) => {
+      if (c.relation !== "parent") return;
+      if (!byParent.has(c.sourceId)) byParent.set(c.sourceId, []);
+      byParent.get(c.sourceId).push(c.targetId);
     });
     const result = new Set();
     const stack = [rootId];
@@ -3838,28 +3889,6 @@
     lifeMapSelectedIds = newSelection;
     lifeMapSelectedId = newSelection.size === 1 ? [...newSelection][0] : null;
     lifeMapRenderNodeSelection();
-  }
-
-  /* ============================================================
-     MULTI-SELECT: parent-এর সব descendant সংগ্রহ
-     ============================================================ */
-  function lifeMapCollectDescendants(rootId) {
-    const data = lifeMapData();
-    const byParent = new Map();
-    data.nodes.forEach((n) => {
-      if (!n.parentId) return;
-      if (!byParent.has(n.parentId)) byParent.set(n.parentId, []);
-      byParent.get(n.parentId).push(n.id);
-    });
-    const result = new Set();
-    const stack = [rootId];
-    while (stack.length) {
-      const id = stack.pop();
-      if (result.has(id)) continue;
-      result.add(id);
-      (byParent.get(id) || []).forEach((c) => stack.push(c));
-    }
-    return result;
   }
 
   /* ============================================================
@@ -3992,6 +4021,7 @@
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
     lifeMapSelectedId = node.id;
+    lifeMapAdditiveMode = false;
 
     renderLifeMap();
     notify("New Node তৈরি হয়েছে — Inspector থেকে Edit করো।");
@@ -4551,6 +4581,18 @@
         lifeMapCloseContextMenu();
         if (isMulti) lifeMapOpenBulkEditModal(targets);
         else lifeMapOpenNodeModal(node.id);
+      } else if (action === "duplicate") {
+        lifeMapCloseContextMenu();
+        const ids = targets.map((n) => n.id);
+        const newIds = lifeMapDuplicateNodes(ids, 40);
+        if (newIds.length) {
+          lifeMapSelectedIds.clear();
+          newIds.forEach((id) => lifeMapSelectedIds.add(id));
+          lifeMapSelectedId = newIds[newIds.length - 1];
+          lifeMapAdditiveMode = false;
+          renderLifeMap();
+          notify(`${newIds.length}টি node duplicate হয়েছে।`);
+        }
       } else if (action === "status") {
         const newStatus = btn.dataset.status;
         targets.forEach((n) => {
@@ -4803,6 +4845,7 @@
       const nodeEl = event.target.closest("[data-lm-node]");
       const node = nodeEl ? lifeMapNodeById(nodeEl.dataset.lmNode) : null;
       const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+      const ctrlHeld = event.ctrlKey || event.metaKey;
       lifeMapAdditiveMode = additive;
 
       if (node) {
@@ -4843,14 +4886,17 @@
         } else if (isAlreadySelected) {
           // 👈 ইতিমধ্যে-selected → selection অটুট
           lifeMapSelectedId = node.id;
+          lifeMapAdditiveMode = false;
         } else if (lifeMapMultiSelectMode) {
           // Multi মোড + নতুন নোড → parent + সব descendant
           lifeMapSelectedIds = lifeMapCollectDescendants(node.id);
           lifeMapSelectedId = node.id;
+          lifeMapAdditiveMode = false;
         } else {
           lifeMapSelectedIds.clear();
           lifeMapSelectedIds.add(node.id);
           lifeMapSelectedId = node.id;
+          lifeMapAdditiveMode = false;
         }
         lifeMapRenderNodeSelection();
 
@@ -4871,6 +4917,8 @@
             (event.clientY - rect.top - lifeMapPanY) / lifeMapZoom,
           pointer: { x: event.clientX, y: event.clientY },
           moved: false,
+          pendingDuplicate: ctrlHeld,
+          duplicated: false,
         };
         lifeMapStartAutoPan();
       } else {
@@ -4966,6 +5014,37 @@
 
         if (Math.abs(dxWorld) + Math.abs(dyWorld) > 0.5)
           lifeMapDrag.moved = true;
+
+        // Ctrl+drag → duplicate on the first real movement frame.
+        // The originals stay in place; the freshly-created copies
+        // follow the cursor.
+        if (
+          lifeMapDrag.moved &&
+          lifeMapDrag.pendingDuplicate &&
+          !lifeMapDrag.duplicated
+        ) {
+          lifeMapDrag.duplicated = true;
+          const clickedId = lifeMapDrag.clickedId;
+          if (!lifeMapSelectedIds.has(clickedId)) {
+            lifeMapSelectedIds.add(clickedId);
+            lifeMapSelectedId = clickedId;
+          }
+          const sourceIds = [...lifeMapSelectedIds];
+          const newIds = lifeMapDuplicateNodes(sourceIds, 0);
+          if (newIds.length) {
+            lifeMapDrag.ids = newIds;
+            lifeMapDrag.origins = newIds.map((id) => {
+              const n = lifeMapNodeById(id);
+              return { id, x: n ? n.x : 0, y: n ? n.y : 0 };
+            });
+            lifeMapSelectedIds.clear();
+            newIds.forEach((id) => lifeMapSelectedIds.add(id));
+            lifeMapSelectedId = newIds[newIds.length - 1];
+            lifeMapAdditiveMode = false;
+            renderLifeMap();
+            notify(`${newIds.length}টি node duplicate হয়েছে।`);
+          }
+        }
 
         lifeMapDrag.origins.forEach((origin) => {
           const n = lifeMapNodeById(origin.id);
@@ -5071,6 +5150,7 @@
         lifeMapSelectedIds.clear();
         lifeMapSelectedIds.add(nodeId);
         lifeMapSelectedId = nodeId;
+        lifeMapAdditiveMode = false;
       } else {
         lifeMapSelectedId = nodeId;
       }
