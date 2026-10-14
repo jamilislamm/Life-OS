@@ -3246,6 +3246,166 @@ html[data-theme="dark"]
   color: var(--text);
 }
 
+/* ============================================================
+   REMINDER RESCHEDULE CALENDAR
+   ============================================================ */
+
+.reminder-reschedule-modal {
+  max-width: 420px;
+}
+
+.rr-calendar {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-2);
+  padding: 12px;
+}
+
+.rr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.rr-head button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+.rr-head button:hover {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.rr-title {
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-align: center;
+  flex: 1;
+}
+
+.rr-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.rr-weekdays span {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+.rr-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.rr-cell {
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition:
+    background 0.14s var(--ease),
+    border-color 0.14s var(--ease),
+    color 0.14s var(--ease),
+    transform 0.1s var(--ease);
+}
+.rr-cell:hover {
+  background: var(--hover);
+  border-color: var(--line-strong);
+}
+.rr-cell.other {
+  color: var(--muted);
+  opacity: 0.55;
+}
+.rr-cell.today {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+.rr-cell.selected {
+  background: var(--accent-grad);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 800;
+  box-shadow: 0 6px 14px -6px var(--accent);
+  transform: translateY(-1px);
+}
+.rr-cell.selected:hover {
+  background: var(--accent-grad);
+  filter: brightness(1.06);
+}
+
+.rr-quick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+.rr-quick button {
+  padding: 8px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rr-quick button:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.rr-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.rr-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.rr-actions button {
+  min-width: 90px;
+}
+
 html[data-theme="dark"] #lifeos-userbar {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent), #1a2238;

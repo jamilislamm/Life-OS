@@ -648,6 +648,182 @@
     notify(`${r.name} → ${newDate} এ সরানো হয়েছে।`);
   }
 
+  /* ---------- Reminder Reschedule Calendar ---------- */
+  const reminderRescheduleState = {
+    reminderId: null,
+    viewYear: 0,
+    viewMonth: 0,
+    selectedDate: null,
+  };
+
+  const RR_MONTHS_BN = [
+    "জানুয়ারি",
+    "ফেব্রুয়ারি",
+    "মার্চ",
+    "এপ্রিল",
+    "মে",
+    "জুন",
+    "জুলাই",
+    "আগস্ট",
+    "সেপ্টেম্বর",
+    "অক্টোবর",
+    "নভেম্বর",
+    "ডিসেম্বর",
+  ];
+
+  function openReminderRescheduleModal(reminderId) {
+    const r = reminderById(reminderId);
+    if (!r) return;
+    const base = r.nextDueDate || localDate();
+    const [y, m] = base.split("-").map(Number);
+    reminderRescheduleState.reminderId = reminderId;
+    reminderRescheduleState.viewYear = y;
+    reminderRescheduleState.viewMonth = m - 1;
+    reminderRescheduleState.selectedDate = base;
+
+    const nameEl = $("reminderRescheduleName");
+    if (nameEl) nameEl.textContent = (r.emoji ? r.emoji + " " : "") + r.name;
+    renderReminderCalendar();
+    $("reminderRescheduleOverlay").classList.remove("hidden");
+  }
+
+  function closeReminderRescheduleModal() {
+    $("reminderRescheduleOverlay")?.classList.add("hidden");
+    reminderRescheduleState.reminderId = null;
+  }
+
+  function renderReminderCalendar() {
+    const st = reminderRescheduleState;
+    if (!st.reminderId) return;
+
+    const monthLabel = $("rrMonthLabel");
+    if (monthLabel) {
+      monthLabel.textContent = `${RR_MONTHS_BN[st.viewMonth]} ${st.viewYear}`;
+    }
+
+    const startDow = new Date(st.viewYear, st.viewMonth, 1).getDay();
+    const daysInMonth = new Date(st.viewYear, st.viewMonth + 1, 0).getDate();
+    const prevDaysInMonth = new Date(st.viewYear, st.viewMonth, 0).getDate();
+    const todayStr = localDate();
+
+    const cells = [];
+    for (let i = startDow - 1; i >= 0; i--) {
+      const d = prevDaysInMonth - i;
+      const dt = new Date(st.viewYear, st.viewMonth - 1, d);
+      cells.push({ date: localDate(dt), day: d, other: true });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dt = new Date(st.viewYear, st.viewMonth, d);
+      cells.push({ date: localDate(dt), day: d, other: false });
+    }
+    const tail = (7 - (cells.length % 7)) % 7;
+    for (let d = 1; d <= tail; d++) {
+      const dt = new Date(st.viewYear, st.viewMonth + 1, d);
+      cells.push({ date: localDate(dt), day: d, other: true });
+    }
+
+    const grid = $("rrGrid");
+    if (grid) {
+      grid.innerHTML = cells
+        .map((c) => {
+          const cls = ["rr-cell"];
+          if (c.other) cls.push("other");
+          if (c.date === todayStr) cls.push("today");
+          if (c.date === st.selectedDate) cls.push("selected");
+          return `<button type="button" class="${cls.join(" ")}" data-rr-date="${c.date}">${c.day}</button>`;
+        })
+        .join("");
+    }
+
+    const sel = $("rrSelectedLabel");
+    if (sel) {
+      const nice = st.selectedDate
+        ? new Date(st.selectedDate + "T12:00:00").toLocaleDateString("bn-BD", {
+            weekday: "short",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })
+        : "—";
+      sel.textContent = `নির্বাচিত: ${nice}`;
+    }
+  }
+
+  function shiftReminderCalendarMonth(delta) {
+    const st = reminderRescheduleState;
+    let m = st.viewMonth + delta;
+    let y = st.viewYear;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    } else if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    st.viewMonth = m;
+    st.viewYear = y;
+    renderReminderCalendar();
+  }
+
+  function setReminderCalendarDate(dateStr) {
+    const st = reminderRescheduleState;
+    st.selectedDate = dateStr;
+    const [y, m] = dateStr.split("-").map(Number);
+    st.viewYear = y;
+    st.viewMonth = m - 1;
+    renderReminderCalendar();
+  }
+
+  function bindReminderRescheduleCalendar() {
+    $("rrPrevMonth")?.addEventListener("click", () =>
+      shiftReminderCalendarMonth(-1),
+    );
+    $("rrNextMonth")?.addEventListener("click", () =>
+      shiftReminderCalendarMonth(1),
+    );
+
+    $("rrGrid")?.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-rr-date]");
+      if (!b) return;
+      setReminderCalendarDate(b.dataset.rrDate);
+    });
+
+    document
+      .querySelectorAll("#reminderRescheduleOverlay [data-rr-quick]")
+      .forEach((b) =>
+        b.addEventListener("click", () => {
+          const kind = b.dataset.rrQuick;
+          const today = localDate();
+          let target = today;
+          if (kind === "tomorrow") target = addDays(today, 1);
+          else if (kind === "+7") target = addDays(today, 7);
+          else if (kind === "+30") target = addDays(today, 30);
+          setReminderCalendarDate(target);
+        }),
+      );
+
+    $("rrCancel")?.addEventListener("click", closeReminderRescheduleModal);
+
+    $("rrSave")?.addEventListener("click", () => {
+      const st = reminderRescheduleState;
+      if (!st.reminderId || !st.selectedDate) {
+        closeReminderRescheduleModal();
+        return;
+      }
+      const id = st.reminderId;
+      const dt = st.selectedDate;
+      closeReminderRescheduleModal();
+      rescheduleReminder(id, dt);
+      renderAll();
+    });
+
+    $("reminderRescheduleOverlay")?.addEventListener("click", (e) => {
+      if (e.target === $("reminderRescheduleOverlay")) {
+        closeReminderRescheduleModal();
+      }
+    });
+  }
+
   function archiveReminder(id) {
     const r = reminderById(id);
     if (!r) return;
@@ -667,7 +843,7 @@
     belief: { label: "Belief", icon: "◇" },
     "skill-gap": { label: "Skill Gap", icon: "◈" },
     condition: { label: "Condition", icon: "○" },
-    measure: { label: "Measure", icon: "◫" },
+    measure: { label: "Evidence", icon: "◫" },
     action: { label: "Action", icon: "✓" },
     research: { label: "Research", icon: "⌕" },
     decision: { label: "Decision", icon: "⑂" },
@@ -3858,10 +4034,7 @@
       if (!b) return;
       const r = reminderById(b.dataset.reminderReschedule);
       if (!r) return;
-      const nd = prompt("নতুন তারিখ (YYYY-MM-DD):", r.nextDueDate);
-      if (!nd || !/^\d{4}-\d{2}-\d{2}$/.test(nd)) return;
-      rescheduleReminder(r.id, nd);
-      renderAll();
+      openReminderRescheduleModal(r.id);
     });
 
     // Reminders page-এর list
@@ -3877,10 +4050,7 @@
       if (!r) return;
 
       if (b.dataset.reminderReschedule) {
-        const nd = prompt("নতুন তারিখ (YYYY-MM-DD):", r.nextDueDate);
-        if (!nd || !/^\d{4}-\d{2}-\d{2}$/.test(nd)) return;
-        rescheduleReminder(r.id, nd);
-        renderAll();
+        openReminderRescheduleModal(r.id);
         return;
       }
 
@@ -6194,6 +6364,7 @@
     bindEvents();
     bindLifeMapEvents();
     bindTrackingFab();
+    bindReminderRescheduleCalendar();
     lifeMapRelocatePopups();
     syncThemeButton();
     resetPresetForm();

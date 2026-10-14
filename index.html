@@ -1203,7 +1203,7 @@
                           <option value="belief">◇ Belief</option>
                           <option value="skill-gap">◈ Skill Gap</option>
                           <option value="condition">○ Condition</option>
-                          <option value="measure">◫ Measure</option>
+                          <option value="Evidence">◫ Evidence</option>
                           <option value="action">✓ Action</option>
                           <option value="research">⌕ Research</option>
                           <option value="decision">⑂ Decision</option>
@@ -1715,6 +1715,60 @@
         <div class="row" style="justify-content: flex-end; margin-top: 18px">
           <button id="logEditCancel">Cancel</button>
           <button class="primary" id="logEditSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== REMINDER RESCHEDULE CALENDAR ===================== -->
+    <div id="reminderRescheduleOverlay" class="modal-overlay hidden">
+      <div
+        class="modal reminder-reschedule-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reminderRescheduleTitle"
+      >
+        <h2 id="reminderRescheduleTitle">Reschedule Reminder</h2>
+        <p
+          id="reminderRescheduleName"
+          class="muted tiny"
+          style="margin: -6px 0 14px"
+        ></p>
+
+        <div class="rr-calendar">
+          <div class="rr-head">
+            <button type="button" id="rrPrevMonth" aria-label="Previous month">
+              ‹
+            </button>
+            <div class="rr-title" id="rrMonthLabel">—</div>
+            <button type="button" id="rrNextMonth" aria-label="Next month">
+              ›
+            </button>
+          </div>
+          <div class="rr-weekdays">
+            <span>রবি</span>
+            <span>সোম</span>
+            <span>মঙ্গল</span>
+            <span>বুধ</span>
+            <span>বৃহঃ</span>
+            <span>শুক্র</span>
+            <span>শনি</span>
+          </div>
+          <div class="rr-grid" id="rrGrid"></div>
+        </div>
+
+        <div class="rr-quick">
+          <button type="button" data-rr-quick="today">আজ</button>
+          <button type="button" data-rr-quick="tomorrow">আগামীকাল</button>
+          <button type="button" data-rr-quick="+7">+৭ দিন</button>
+          <button type="button" data-rr-quick="+30">+৩০ দিন</button>
+        </div>
+
+        <div class="rr-foot">
+          <span id="rrSelectedLabel" class="muted tiny"></span>
+          <div class="rr-actions">
+            <button type="button" id="rrCancel">Cancel</button>
+            <button type="button" class="primary" id="rrSave">Save</button>
+          </div>
         </div>
       </div>
     </div>
