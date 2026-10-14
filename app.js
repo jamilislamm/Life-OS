@@ -2167,6 +2167,26 @@
     return `<div class="item"><input type="checkbox" aria-label="Mark done" data-reminder-done="${r.id}"><div class="content"><strong>${escapeHTML(emoji + r.name)} ${pill}</strong><div class="tiny">${escapeHTML(describeSchedule(r.schedule))}${resched}</div></div><div class="actions"><button class="small" data-reminder-reschedule="${r.id}">Reschedule</button></div></div>`;
   }
 
+  function updateTodayNavBadge() {
+    const badge = $("todayNavBadge");
+    if (!badge) return;
+    const today = localDate();
+    // Count today's sessions that are still pending:
+    //   - scheduled or manually added for today
+    //   - not dismissed (user removed them from the list)
+    //   - not marked done
+    const pending = state.tasks.filter(
+      (t) => t.date === today && !t.dismissed && t.status !== "done",
+    ).length;
+    if (pending > 0) {
+      badge.textContent = String(pending);
+      badge.classList.remove("hidden");
+    } else {
+      badge.textContent = "";
+      badge.classList.add("hidden");
+    }
+  }
+
   function renderTodayReminders() {
     // ============ Nav badge update (সবসময় আজকের) ============
     const today = localDate();
@@ -2955,6 +2975,7 @@
     renderReview();
     renderRemindersList();
     renderTodayReminders();
+    updateTodayNavBadge();
     renderTrackingFabActions();
     updateTrackingFab();
     updateLiveNumbers();
@@ -6947,6 +6968,7 @@
     resetPresetForm();
     resetReminderForm();
     renderTodayReminders();
+    updateTodayNavBadge();
     renderDashboardPhaseEditor([
       { name: "Focus", minutes: 25 },
       { name: "Break", minutes: 5 },
