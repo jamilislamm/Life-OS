@@ -4897,7 +4897,6 @@
 
     /* ---- Double-click: rubber-band arm ---- */
     canvas.addEventListener("dblclick", (event) => {
-      if (!lifeMapMultiSelectMode) return;
       if (
         event.target.closest(
           "[data-lm-node], [data-lm-addchild], [data-lm-edit], [data-lm-connect], .lifemap-conn-dot",
