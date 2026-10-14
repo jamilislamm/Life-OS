@@ -2780,8 +2780,10 @@ html[data-theme="dark"]
 .lifemap-canvas.rubber-band-armed {
   cursor: crosshair;
 }
+/* Node cursor stays as a clickable pointer even in rubber-band mode —
+   users still need to grab/move nodes without toggling modes. */
 .lifemap-canvas.rubber-band-armed .lifemap-node {
-  cursor: crosshair;
+  cursor: pointer;
 }
 /* ============================================================
    LIFE MAP — HOVER CARD

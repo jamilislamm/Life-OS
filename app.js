@@ -5055,26 +5055,31 @@
 
       const rect = canvas.getBoundingClientRect();
 
-      // Rubber-band armed → start rectangle
-      if (lifeMapRubberBandArmed) {
-        lifeMapRubberBand = {
-          startScreenX: event.clientX,
-          startScreenY: event.clientY,
-          currentScreenX: event.clientX,
-          currentScreenY: event.clientY,
-        };
-        lifeMapSelectedIds = new Set();
-        lifeMapSelectedId = null;
-        lifeMapRenderNodeSelection();
-        lifeMapDrawRubberBand();
-        try {
-          canvas.setPointerCapture(event.pointerId);
-        } catch (_) {}
-        return;
-      }
-
       const nodeEl = event.target.closest("[data-lm-node]");
       const node = nodeEl ? lifeMapNodeById(nodeEl.dataset.lmNode) : null;
+
+      // Rubber-band armed → begin tracking. If the user clicked directly
+      // on a node, disarm and fall through so normal node drag / select
+      // works.
+      if (lifeMapRubberBandArmed) {
+        if (node) {
+          lifeMapRubberBandArmed = false;
+          canvas.classList.remove("rubber-band-armed");
+        } else {
+          lifeMapRubberBand = {
+            startScreenX: event.clientX,
+            startScreenY: event.clientY,
+            currentScreenX: event.clientX,
+            currentScreenY: event.clientY,
+            hasMoved: false,
+          };
+          try {
+            canvas.setPointerCapture(event.pointerId);
+          } catch (_) {}
+          return;
+        }
+      }
+
       const additive = event.shiftKey || event.ctrlKey || event.metaKey;
       const ctrlHeld = event.ctrlKey || event.metaKey;
       lifeMapAdditiveMode = additive;
@@ -5181,6 +5186,15 @@
       const rect = canvas.getBoundingClientRect();
 
       if (lifeMapRubberBand) {
+        const dx = Math.abs(event.clientX - lifeMapRubberBand.startScreenX);
+        const dy = Math.abs(event.clientY - lifeMapRubberBand.startScreenY);
+        if (!lifeMapRubberBand.hasMoved && dx + dy < 6) return;
+        if (!lifeMapRubberBand.hasMoved) {
+          lifeMapRubberBand.hasMoved = true;
+          lifeMapSelectedIds = new Set();
+          lifeMapSelectedId = null;
+          lifeMapRenderNodeSelection();
+        }
         lifeMapRubberBand.currentScreenX = event.clientX;
         lifeMapRubberBand.currentScreenY = event.clientY;
         lifeMapDrawRubberBand();
@@ -5303,18 +5317,22 @@
     /* ---- Canvas pointerup / cancel ---- */
     function finishLifeMapPointer(event) {
       if (lifeMapRubberBand) {
+        const wasDrag = lifeMapRubberBand.hasMoved;
         lifeMapRubberBand = null;
         lifeMapRemoveRubberBandEl();
-        lifeMapRubberBandArmed = false;
-        canvas.classList.remove("rubber-band-armed");
         try {
           if (canvas.hasPointerCapture(event.pointerId)) {
             canvas.releasePointerCapture(event.pointerId);
           }
         } catch (_) {}
-        if (lifeMapSelectedIds.size > 0) lifeMapRenderNodeSelection();
-        renderLifeMap();
-        notify(`${lifeMapSelectedIds.size} node selected.`);
+        // Stay armed — user toggles off with a second double-click or
+        // Esc. Consecutive selections keep working without re-arming.
+        if (wasDrag) {
+          if (lifeMapSelectedIds.size > 0) lifeMapInspectorClosed = false;
+          lifeMapRenderNodeSelection();
+          renderLifeMap();
+          notify(`${lifeMapSelectedIds.size} node selected.`);
+        }
         return;
       }
 
