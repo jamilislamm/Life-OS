@@ -6357,9 +6357,586 @@
     persist();
   }
 
+  /* ============================================================
+     VISUAL REMINDERS — Image + OS Notification + Custom Sound
+     ============================================================ */
+  const VREM_KEY = "lifeOS.visualReminders.v1";
+  let visualReminders = [];
+
+  function loadVisualRemindersFromStorage() {
+    try {
+      const raw = localStorage.getItem(VREM_KEY);
+      if (!raw) return [];
+      const data = JSON.parse(raw);
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveVisualReminders() {
+    try {
+      localStorage.setItem(VREM_KEY, JSON.stringify(visualReminders));
+    } catch (e) {
+      notify("Visual Reminders সেভ হয়নি — browser storage পূর্ণ।");
+    }
+  }
+
+  function visualReminderById(id) {
+    return visualReminders.find((v) => v.id === id) || null;
+  }
+
+  function renderVisualReminders() {
+    const host = $("visualReminderList");
+    if (!host) return;
+
+    updatePermissionBadge();
+
+    if (!visualReminders.length) {
+      host.innerHTML =
+        '<div class="empty">এখনো কোনো Visual Reminder নেই। উপরে + New চাপো।</div>';
+      return;
+    }
+
+    host.innerHTML = visualReminders
+      .map((vr) => {
+        const icon = vr.iconData
+          ? `<img src="${escapeHTML(vr.iconData)}" alt="">`
+          : "💧";
+        const badge = vr.enabled
+          ? `<span class="vr-status-badge on">● Active</span>`
+          : `<span class="vr-status-badge">○ Disabled</span>`;
+        const interval =
+          vr.intervalMin === vr.intervalMax
+            ? `${vr.intervalMin}m`
+            : `${vr.intervalMin}–${vr.intervalMax}m`;
+        const soundLabel =
+          vr.soundType === "none"
+            ? "🔇"
+            : vr.soundType === "bell"
+              ? "🔔 Bell"
+              : "🔔 Chime";
+        let nextLine = "";
+        if (vr.enabled && vr.nextFireAt) {
+          const t = new Date(vr.nextFireAt).toLocaleTimeString("bn-BD", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          nextLine = ` · পরবর্তী: ${t}`;
+        }
+        const todayLine = vr.todayCount ? ` · আজ: ${vr.todayCount}` : "";
+
+        const bigImg =
+          vr.showImage && vr.imageData
+            ? `<img src="${escapeHTML(vr.imageData)}" alt="" class="vr-list-img">`
+            : "";
+        return `<div class="item">
+          <div class="vr-item-icon">${icon}</div>
+          <div class="content">
+            <strong>${escapeHTML(vr.name)}${badge}</strong>
+            <div class="tiny">Every ${interval} · ${soundLabel} · ${escapeHTML(vr.activeStart)}–${escapeHTML(vr.activeEnd)}${todayLine}${vr.silentDuringFocus ? " · 🔇 Silent in Focus" : ""}</div>
+            <div class="tiny">${nextLine}</div>
+            ${bigImg}
+          </div>
+          <div class="actions">
+            <button class="small" data-vr-toggle="${vr.id}">${vr.enabled ? "Disable" : "Enable"}</button>
+            <button class="small" data-vr-test="${vr.id}">Test</button>
+            <button class="small" data-vr-edit="${vr.id}">Edit</button>
+            <button class="small danger" data-vr-delete="${vr.id}">Delete</button>
+          </div>
+        </div>`;
+      })
+      .join("");
+  }
+
+  function updatePermissionBadge() {
+    const badge = $("vrPermissionStatus");
+    const warn = $("vrPermissionWarning");
+    if (!badge) return;
+    const supported = "Notification" in window;
+    if (!supported) {
+      badge.textContent = "❌ Not supported";
+      badge.className = "pill denied";
+      return;
+    }
+    const p = Notification.permission;
+    if (p === "granted") {
+      badge.textContent = "✓ Notifications on";
+      badge.className = "pill granted";
+      warn?.classList.add("hidden");
+    } else if (p === "denied") {
+      badge.textContent = "❌ Blocked";
+      badge.className = "pill denied";
+      warn?.classList.add("hidden");
+    } else {
+      badge.textContent = "⚠ Click to enable";
+      badge.className = "pill default";
+      warn?.classList.remove("hidden");
+    }
+  }
+
+  async function requestNotificationPermission() {
+    if (!("Notification" in window)) {
+      notify("এই browser-এ Notification সমর্থিত নয়।");
+      return;
+    }
+    try {
+      const res = await Notification.requestPermission();
+      updatePermissionBadge();
+      if (res === "granted") {
+        notify("✓ Notifications চালু হয়েছে।");
+      } else if (res === "denied") {
+        notify("Notifications ব্লক করা আছে — browser settings থেকে চালু করো।");
+      }
+    } catch (e) {
+      notify("Permission নেওয়া যায়নি।");
+    }
+  }
+
+  /* ---------- Form ---------- */
+  function resetVisualReminderForm() {
+    $("vrEditId").value = "";
+    $("vrIconData").value = "";
+    $("vrImageData").value = "";
+    $("vrName").value = "";
+    $("vrMessage").value = "";
+    $("vrIntervalMin").value = 20;
+    $("vrIntervalMax").value = 30;
+    $("vrSound").value = "chime";
+    $("vrActiveStart").value = "09:00";
+    $("vrActiveEnd").value = "22:00";
+    $("vrShowImage").checked = false;
+    $("vrSilentFocus").checked = false;
+    $("vrEnabled").checked = true;
+    $("vrIconPreview").innerHTML = "💧";
+    $("vrImagePreview").innerHTML = "খালি";
+    $("visualReminderFormTitle").textContent = "নতুন Visual Reminder";
+    $("visualReminderFormWrap").classList.add("hidden");
+  }
+
+  function openVisualReminderForm(id) {
+    resetVisualReminderForm();
+    if (id) {
+      const vr = visualReminderById(id);
+      if (!vr) return;
+      $("vrEditId").value = vr.id;
+      $("vrIconData").value = vr.iconData || "";
+      $("vrImageData").value = vr.imageData || "";
+      $("vrName").value = vr.name;
+      $("vrMessage").value = vr.message || "";
+      $("vrIntervalMin").value = vr.intervalMin || 20;
+      $("vrIntervalMax").value = vr.intervalMax || 30;
+      $("vrSound").value = vr.soundType || "chime";
+      $("vrActiveStart").value = vr.activeStart || "09:00";
+      $("vrActiveEnd").value = vr.activeEnd || "22:00";
+      $("vrShowImage").checked = !!vr.showImage;
+      $("vrSilentFocus").checked = !!vr.silentDuringFocus;
+      $("vrEnabled").checked = !!vr.enabled;
+      if (vr.iconData) {
+        $("vrIconPreview").innerHTML =
+          `<img src="${escapeHTML(vr.iconData)}" alt="">`;
+      }
+      if (vr.imageData) {
+        $("vrImagePreview").innerHTML =
+          `<img src="${escapeHTML(vr.imageData)}" alt="">`;
+      }
+      $("visualReminderFormTitle").textContent = "Visual Reminder Edit";
+    }
+    $("visualReminderFormWrap").classList.remove("hidden");
+    setTimeout(() => $("vrName").focus(), 60);
+  }
+
+  /* ---------- Image upload helpers ---------- */
+  function readFileAsDataURL(file, cb) {
+    const reader = new FileReader();
+    reader.onload = (e) => cb(e.target.result);
+    reader.onerror = () => notify("ছবি পড়া যায়নি।");
+    reader.readAsDataURL(file);
+  }
+
+  function resizeImageToSquare(dataURL, size, cb) {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const ratio = Math.max(size / img.width, size / img.height);
+      const w = img.width * ratio;
+      const h = img.height * ratio;
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      cb(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => notify("ছবি খোলা যায়নি।");
+    img.src = dataURL;
+  }
+
+  function handleIconUpload(file) {
+    if (file.size > 2 * 1024 * 1024) {
+      notify("Icon ২MB-এর কম হতে হবে।");
+      return;
+    }
+    readFileAsDataURL(file, (dataURL) => {
+      resizeImageToSquare(dataURL, 64, (small) => {
+        $("vrIconData").value = small;
+        $("vrIconPreview").innerHTML =
+          `<img src="${escapeHTML(small)}" alt="">`;
+      });
+    });
+  }
+
+  function resizeImageToFit(dataURL, targetW, targetH, bgColor, cb) {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = bgColor || "#ffffff";
+      ctx.fillRect(0, 0, targetW, targetH);
+      // Contain mode — full image visible, letterbox if needed
+      const scale = Math.min(targetW / img.width, targetH / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.drawImage(img, (targetW - w) / 2, (targetH - h) / 2, w, h);
+      cb(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => notify("ছবি খোলা যায়নি।");
+    img.src = dataURL;
+  }
+
+  function handleImageUpload(file) {
+    if (file.size > 2 * 1024 * 1024) {
+      notify("Image ২MB-এর কম হতে হবে।");
+      return;
+    }
+    readFileAsDataURL(file, (dataURL) => {
+      // Fit into Windows' hero ratio — full image, no crop.
+      resizeImageToFit(dataURL, 364, 180, "#ffffff", (fitted) => {
+        $("vrImageData").value = fitted;
+        $("vrImagePreview").innerHTML =
+          `<img src="${escapeHTML(fitted)}" alt="">`;
+      });
+    });
+  }
+
+  /* ---------- Save / Delete / Toggle ---------- */
+  function saveVisualReminderFromForm(e) {
+    e.preventDefault();
+    const id = $("vrEditId").value;
+    const name = $("vrName").value.trim();
+    if (!name) {
+      notify("নাম দাও।");
+      $("vrName").focus();
+      return;
+    }
+    const intervalMin = Math.max(1, Number($("vrIntervalMin").value) || 20);
+    const intervalMax = Math.max(
+      intervalMin,
+      Number($("vrIntervalMax").value) || intervalMin,
+    );
+    const activeStart = $("vrActiveStart").value || "09:00";
+    const activeEnd = $("vrActiveEnd").value || "22:00";
+
+    const payload = {
+      name,
+      message: $("vrMessage").value.trim(),
+      iconData: $("vrIconData").value || "",
+      imageData: $("vrImageData").value || "",
+      intervalMin,
+      intervalMax,
+      soundType: $("vrSound").value || "none",
+      activeStart,
+      activeEnd,
+      showImage: $("vrShowImage").checked,
+      silentDuringFocus: $("vrSilentFocus").checked,
+      enabled: $("vrEnabled").checked,
+    };
+
+    if (id) {
+      const vr = visualReminderById(id);
+      if (vr) {
+        Object.assign(vr, payload);
+        vr.nextFireAt = null;
+      }
+      notify("✓ Visual Reminder আপডেট হয়েছে।");
+    } else {
+      visualReminders.push({
+        id: uid("vrem"),
+        ...payload,
+        nextFireAt: null,
+        lastFiredAt: null,
+        todayCount: 0,
+        todayDate: localDate(),
+        createdAt: nowISO(),
+      });
+      notify("✓ Visual Reminder যোগ হয়েছে।");
+    }
+
+    saveVisualReminders();
+    scheduleVisualReminderTick();
+    resetVisualReminderForm();
+    renderVisualReminders();
+
+    // Ask for permission on first save if not yet granted
+    if ("Notification" in window && Notification.permission === "default") {
+      requestNotificationPermission();
+    }
+  }
+
+  function deleteVisualReminder(id) {
+    const vr = visualReminderById(id);
+    if (!vr) return;
+    if (!confirm(`"${vr.name}" মুছে ফেলবে?`)) return;
+    visualReminders = visualReminders.filter((v) => v.id !== id);
+    saveVisualReminders();
+    renderVisualReminders();
+    notify("Reminder মুছে ফেলা হয়েছে।");
+  }
+
+  function toggleVisualReminder(id) {
+    const vr = visualReminderById(id);
+    if (!vr) return;
+    vr.enabled = !vr.enabled;
+    if (vr.enabled) {
+      vr.nextFireAt = null;
+      scheduleVisualReminderTick();
+    }
+    saveVisualReminders();
+    renderVisualReminders();
+  }
+
+  /* ---------- Scheduler ---------- */
+  function isInActiveHours(vr) {
+    const now = new Date();
+    const cur = now.getHours() * 60 + now.getMinutes();
+    const [sh, sm] = (vr.activeStart || "00:00").split(":").map(Number);
+    const [eh, em] = (vr.activeEnd || "23:59").split(":").map(Number);
+    const start = sh * 60 + sm;
+    const end = eh * 60 + em;
+    if (start === end) return true;
+    if (start < end) return cur >= start && cur <= end;
+    // Crosses midnight
+    return cur >= start || cur <= end;
+  }
+
+  function computeNextFireAt(vr, fromMs) {
+    const min = vr.intervalMin || 20;
+    const max = Math.max(min, vr.intervalMax || min);
+    const minutes = min + Math.random() * (max - min);
+    return new Date(fromMs + minutes * 60000).toISOString();
+  }
+
+  let vremTickHandle = null;
+  function scheduleVisualReminderTick() {
+    if (vremTickHandle) return;
+    vremTickHandle = setInterval(vremTick, 5000);
+  }
+
+  function vremTick() {
+    if (!visualReminders.length) return;
+    const now = Date.now();
+    let dirty = false;
+
+    visualReminders.forEach((vr) => {
+      if (!vr.enabled) return;
+      if (!vr.nextFireAt) {
+        vr.nextFireAt = computeNextFireAt(vr, now);
+        dirty = true;
+        return;
+      }
+      if (!isInActiveHours(vr)) return;
+      if (state.focus.running && vr.silentDuringFocus) return;
+      if (now >= new Date(vr.nextFireAt).getTime()) {
+        fireVisualReminder(vr);
+        vr.lastFiredAt = nowISO();
+        vr.nextFireAt = computeNextFireAt(vr, now);
+        const today = localDate();
+        if (vr.todayDate !== today) {
+          vr.todayCount = 0;
+          vr.todayDate = today;
+        }
+        vr.todayCount = (vr.todayCount || 0) + 1;
+        dirty = true;
+      }
+    });
+
+    if (dirty) {
+      saveVisualReminders();
+      renderVisualReminders();
+    }
+  }
+
+  /* ---------- Notification + Sound ---------- */
+  let vremAudioCtx = null;
+  function ensureAudioContext() {
+    if (vremAudioCtx) return vremAudioCtx;
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return null;
+      vremAudioCtx = new C();
+      return vremAudioCtx;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function playTone(ctx, freq, delaySec, durSec, vol) {
+    const t0 = ctx.currentTime + delaySec;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = freq;
+    o.connect(g);
+    g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || 0.14, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durSec);
+    o.start(t0);
+    o.stop(t0 + durSec + 0.05);
+  }
+
+  function playReminderSound(type) {
+    if (!type || type === "none") return;
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+    if (type === "chime") {
+      playTone(ctx, 660, 0, 0.4, 0.13);
+      playTone(ctx, 880, 0.32, 0.55, 0.13);
+    } else if (type === "bell") {
+      playTone(ctx, 1046, 0, 0.9, 0.15);
+    }
+  }
+
+  function fireVisualReminder(vr) {
+    // OS notification
+    if ("Notification" in window && Notification.permission === "granted") {
+      const opts = {
+        body: vr.message || "রিমাইন্ডারের সময় হয়েছে।",
+        silent: true,
+        tag: "vrem-" + vr.id,
+        renotify: false,
+        requireInteraction: false,
+      };
+      if (vr.iconData) opts.icon = vr.iconData;
+      // Only attach the hero image when the user explicitly opted in —
+      // otherwise Windows inflates the notification card to ~3x height.
+      if (vr.showImage && vr.imageData) opts.image = vr.imageData;
+      try {
+        const n = new Notification(vr.name, opts);
+        n.onclick = () => {
+          try {
+            window.focus();
+          } catch (_) {}
+          n.close();
+        };
+        // Auto-dismiss quickly — 3 seconds is enough to register the
+        // reminder visually without stealing focus.
+        setTimeout(() => {
+          try {
+            n.close();
+          } catch (_) {}
+        }, 3000);
+      } catch (e) {
+        console.warn("Notification failed", e);
+      }
+    }
+
+    // Custom sound
+    playReminderSound(vr.soundType);
+
+    // In-app toast (fallback when tab is visible)
+    if (!document.hidden) {
+      notify(`🔔 ${vr.name}${vr.message ? " — " + vr.message : ""}`);
+    }
+  }
+
+  /* ---------- Event binding ---------- */
+  function bindVisualReminderEvents() {
+    $("newVisualReminderBtn")?.addEventListener("click", () =>
+      openVisualReminderForm(null),
+    );
+    $("vrCancel")?.addEventListener("click", resetVisualReminderForm);
+    $("visualReminderForm")?.addEventListener(
+      "submit",
+      saveVisualReminderFromForm,
+    );
+
+    // Permission badge
+    $("vrPermissionStatus")?.addEventListener("click", () => {
+      if ("Notification" in window && Notification.permission === "default") {
+        requestNotificationPermission();
+      } else if (
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
+        notify("✓ Notifications আগেই চালু আছে।");
+      }
+    });
+
+    // Icon upload
+    $("vrIconBtn")?.addEventListener("click", () => $("vrIconFile").click());
+    $("vrIconFile")?.addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if (f) handleIconUpload(f);
+      e.target.value = "";
+    });
+    $("vrIconClear")?.addEventListener("click", () => {
+      $("vrIconData").value = "";
+      $("vrIconPreview").innerHTML = "💧";
+    });
+
+    // Image upload
+    $("vrImageBtn")?.addEventListener("click", () => $("vrImageFile").click());
+    $("vrImageFile")?.addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if (f) handleImageUpload(f);
+      e.target.value = "";
+    });
+    $("vrImageClear")?.addEventListener("click", () => {
+      $("vrImageData").value = "";
+      $("vrImagePreview").innerHTML = "খালি";
+    });
+
+    // List actions
+    $("visualReminderList")?.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      if (b.dataset.vrToggle) toggleVisualReminder(b.dataset.vrToggle);
+      else if (b.dataset.vrEdit) openVisualReminderForm(b.dataset.vrEdit);
+      else if (b.dataset.vrDelete) deleteVisualReminder(b.dataset.vrDelete);
+      else if (b.dataset.vrTest) {
+        const vr = visualReminderById(b.dataset.vrTest);
+        if (vr) fireVisualReminder(vr);
+      }
+    });
+
+    // Sound preview
+    $("vrSoundTest")?.addEventListener("click", () => {
+      playReminderSound($("vrSound").value);
+    });
+
+    // Unlock audio on first user interaction
+    document.addEventListener(
+      "click",
+      () => {
+        const ctx = ensureAudioContext();
+        if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+      },
+      { once: true },
+    );
+  }
+
   function boot() {
     if (!$("dashboardDate").value) $("dashboardDate").value = localDate();
     if (!$("manualDate").value) $("manualDate").value = localDate();
+    visualReminders = loadVisualRemindersFromStorage();
+    bindVisualReminderEvents();
+    renderVisualReminders();
+    scheduleVisualReminderTick();
     renderSelects();
     bindEvents();
     bindLifeMapEvents();

@@ -3247,6 +3247,121 @@ html[data-theme="dark"]
 }
 
 /* ============================================================
+   VISUAL REMINDERS
+   ============================================================ */
+
+.vr-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.vr-preview {
+  width: 52px;
+  height: 52px;
+  border-radius: 11px;
+  border: 1.5px dashed var(--line-strong);
+  background: var(--panel-2);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  overflow: hidden;
+  flex: none;
+}
+.vr-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vr-preview-wide {
+  width: 130px;
+  height: 52px;
+  border-radius: 11px;
+  border: 1.5px dashed var(--line-strong);
+  background: var(--panel-2);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  flex: none;
+}
+.vr-preview-wide img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.vr-item-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  flex: none;
+  overflow: hidden;
+}
+.vr-item-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vr-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.vr-status-badge.on {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: var(--green-line);
+}
+
+#vrPermissionStatus {
+  cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+#vrPermissionStatus.granted {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: var(--green-line);
+}
+#vrPermissionStatus.denied {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger-line);
+}
+#vrPermissionStatus.default {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-color: var(--amber-line);
+}
+
+.vr-list-img {
+  display: block;
+  margin-top: 8px;
+  width: 182px;
+  height: 90px;
+  object-fit: contain;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+/* ============================================================
    REMINDER RESCHEDULE CALENDAR
    ============================================================ */
 
