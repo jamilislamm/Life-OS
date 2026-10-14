@@ -2819,14 +2819,16 @@
     $("phaseEditor").appendChild(wrap);
   }
   function phaseHM(row) {
-    return Math.max(
-      1,
-      Number(row.querySelector(".phase-hours")?.value || 0) * 60 +
-        Math.min(
-          59,
-          Math.max(0, Number(row.querySelector(".phase-mins")?.value || 0)),
-        ) || 1,
+    // 0 is valid — it marks a skip-marker phase. Only clamp negatives.
+    const h = Math.max(
+      0,
+      Number(row.querySelector(".phase-hours")?.value) || 0,
     );
+    const m = Math.min(
+      59,
+      Math.max(0, Number(row.querySelector(".phase-mins")?.value) || 0),
+    );
+    return h * 60 + m;
   }
   function collectPhases() {
     return [...document.querySelectorAll("#phaseEditor .phase-row")].map(
@@ -2847,6 +2849,11 @@
       notify("আগের Focus Session আগে Stop করো।");
       return;
     }
+    const firstIdx = focusFindActivePhase(0, 1);
+    if (firstIdx === null) {
+      notify("এই session-এ কোনো সক্রিয় phase নেই (সব ০ মিনিট)।");
+      return;
+    }
     state.focus = {
       ...seed().focus,
       presetId: p.id,
@@ -2856,7 +2863,7 @@
       phaseStartedAt: nowISO(),
       elapsedBeforePause: 0,
       phaseElapsedBeforePause: 0,
-      phaseIndex: 0,
+      phaseIndex: firstIdx,
       alerted: false,
       mode: "timer",
       trackingActionId: null,
@@ -2865,7 +2872,13 @@
     focusApplyTracking("start");
     renderAll();
     switchPage("focus");
-    notify("Focus Session শুরু হয়েছে।");
+    if (firstIdx > 0) {
+      notify(
+        `০-মিনিটের phase স্কিপ করে "${p.phases[firstIdx].name}" শুরু হলো।`,
+      );
+    } else {
+      notify("Focus Session শুরু হয়েছে।");
+    }
   }
   function pauseFocus() {
     const f = state.focus;
@@ -2901,30 +2914,58 @@
   function nextPhase() {
     const f = state.focus,
       p = activePreset();
-    if (!p || f.phaseIndex >= p.phases.length - 1) return;
-    f.phaseIndex = f.phaseIndex + 1;
+    if (!p) return;
+    if (f.phaseIndex >= p.phases.length - 1) return;
+
+    const ni = focusFindActivePhase(f.phaseIndex + 1, 1);
+    if (ni === null) {
+      // Every remaining phase is 0-minute → session complete.
+      notify("⏹ সব phase সম্পন্ন — Focus Session বন্ধ হচ্ছে।");
+      stopFocus();
+      return;
+    }
+    const skipped = ni - f.phaseIndex - 1;
+    f.phaseIndex = ni;
     f.phaseStartedAt = nowISO();
     f.phaseElapsedBeforePause = 0;
     f.alerted = false;
     persist();
     focusApplyTracking("next");
     renderAll();
-    notify("পরের পর্যায় শুরু হয়েছে।");
+    if (skipped > 0) {
+      notify(
+        `${skipped}টি ০-মিনিট phase স্কিপ করে "${p.phases[ni].name}" শুরু হলো।`,
+      );
+    } else {
+      notify("পরের পর্যায় শুরু হয়েছে।");
+    }
   }
   function prevPhase() {
     const f = state.focus,
       p = activePreset();
-    if (!p || f.phaseIndex <= 0) return;
+    if (!p) return;
     if (!f.running && !f.paused) return;
 
-    f.phaseIndex = f.phaseIndex - 1;
+    const pi = focusFindActivePhase(f.phaseIndex - 1, -1);
+    if (pi === null) {
+      notify("এর আগে আর কোনো সক্রিয় phase নেই।");
+      return;
+    }
+    const skipped = f.phaseIndex - pi - 1;
+    f.phaseIndex = pi;
     f.phaseStartedAt = nowISO();
     f.phaseElapsedBeforePause = 0;
     f.alerted = false;
     persist();
     focusApplyTracking("prev");
     renderAll();
-    notify("আগের phase-এ ফিরে গেছে।");
+    if (skipped > 0) {
+      notify(
+        `${skipped}টি ০-মিনিট phase স্কিপ করে "${p.phases[pi].name}" শুরু হলো।`,
+      );
+    } else {
+      notify("আগের phase-এ ফিরে গেছে।");
+    }
   }
   function checkFocusAlarm() {
     const f = state.focus;
@@ -5590,7 +5631,8 @@
       const phase = activePhase();
       if (phase) {
         const dur = (Number(phase.minutes) || 0) * 60;
-        const over = phaseElapsed() >= dur;
+        // 0-minute phases are skip markers — never trigger the alarm.
+        const over = dur > 0 && phaseElapsed() >= dur;
         const allowOT = phase.countUp !== false;
         if (over && !f.alerted) {
           f.alerted = true;
@@ -5908,6 +5950,22 @@
     closeTrackingSegment(nowISO());
     f.trackingActionId = null;
     persist();
+  }
+
+  /* Returns the index of the closest phase with minutes > 0, starting
+     at `startIndex` and moving by `direction` (+1 for forward, -1 for
+     backward). Returns null if no active phase exists in that range.
+     0-minute phases are treated as skip markers. */
+  function focusFindActivePhase(startIndex, direction) {
+    const p = activePreset();
+    if (!p || !p.phases) return null;
+    let i = startIndex;
+    while (i >= 0 && i < p.phases.length) {
+      const m = Number(p.phases[i].minutes) || 0;
+      if (m > 0) return i;
+      i += direction;
+    }
+    return null;
   }
 
   function createNewFocusSession() {
