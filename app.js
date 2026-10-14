@@ -3940,32 +3940,132 @@
           : "☀️ Light mode চালু হয়েছে।",
       );
     });
+    /* ---------- Global keyboard shortcuts ---------- */
     document.addEventListener("keydown", (e) => {
-      const tag = (e.target.tagName || "").toLowerCase(),
-        typing =
-          ["input", "textarea", "select"].includes(tag) ||
-          e.target.isContentEditable;
+      const tag = (e.target.tagName || "").toLowerCase();
+      const typing =
+        ["input", "textarea", "select"].includes(tag) ||
+        e.target.isContentEditable;
+      const key = e.key.toLowerCase();
+      const focusedId = e.target.id || "";
+
+      // --- Ctrl / Cmd combos (work even while typing) ---
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "Enter") {
+          const nodeModal = $("lifeMapNodeModal");
+          if (nodeModal && !nodeModal.classList.contains("hidden")) {
+            e.preventDefault();
+            $("lifeMapSaveNode")?.click();
+          }
+        }
+        return;
+      }
+
+      // --- Enter handling (BEFORE typing-guard so it works on selects) ---
+      //   1. Any field inside the Life Map node modal → save
+      //      (except textarea, where Enter adds a newline; use Ctrl+Enter)
+      //   2. FAB dropdown → start selected action and close panel
+      if (e.key === "Enter") {
+        const modal = $("lifeMapNodeModal");
+        const modalOpen = modal && !modal.classList.contains("hidden");
+        if (modalOpen && tag !== "textarea") {
+          e.preventDefault();
+          $("lifeMapSaveNode")?.click();
+          return;
+        }
+        if (focusedId === "trackingFabAction") {
+          e.preventDefault();
+          $("trackingFabStart")?.click();
+          closeTrackingFabPanel();
+          return;
+        }
+      }
+
+      // --- T: toggle tracking FAB panel. Works even when the FAB
+      //     dropdown itself is focused, so the native <select> never
+      //     hijacks T to jump to T-named options. ---
+      if (key === "t") {
+        e.preventDefault();
+        const panel = $("trackingFabPanel");
+        const isOpen = panel && !panel.classList.contains("hidden");
+        if (isOpen) {
+          closeTrackingFabPanel();
+        } else {
+          openTrackingFabPanel();
+          setTimeout(() => $("trackingFabAction")?.focus(), 80);
+        }
+        return;
+      }
+
+      // --- Skip remaining shortcuts if user is typing ---
       if (typing) return;
+
+      const activePage = document.querySelector(".page.active")?.id || "";
+      const onFocusPage = activePage === "page-focus";
+
+      // --- P: pause/resume (Focus page takes priority) ---
+      if (key === "p") {
+        e.preventDefault();
+        if (onFocusPage && (state.focus.running || state.focus.paused)) {
+          pauseFocus();
+        } else if (state.tracking.activeActionId) {
+          toggleTrackingPause();
+        }
+        return;
+      }
+
+      // --- S: stop/start (Focus page takes priority) ---
+      if (key === "s") {
+        e.preventDefault();
+        if (onFocusPage) {
+          if (state.focus.running || state.focus.paused) stopFocus();
+          else if (state.focus.presetId) startFocus(state.focus.presetId);
+        } else if (state.tracking.activeActionId) {
+          stopTracking();
+        }
+        return;
+      }
+
+      // --- Focus page: arrow keys for phase navigation ---
+      if (onFocusPage && (state.focus.running || state.focus.paused)) {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          prevPhase();
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          nextPhase();
+          return;
+        }
+      }
+
+      // --- Space: focus start/pause (existing) ---
       if (e.key === " ") {
         e.preventDefault();
         if (state.focus.running || state.focus.paused) pauseFocus();
         else if (state.focus.presetId)
           startFocus(state.focus.presetId, "timer");
-      } else if (e.key.toLowerCase() === "r" && state.focus.paused)
+        return;
+      }
+
+      // --- R: focus resume (existing) ---
+      if (key === "r" && state.focus.paused) {
+        e.preventDefault();
         pauseFocus();
-      else if (
-        e.key.toLowerCase() === "s" &&
-        (state.focus.running || state.focus.paused)
-      )
-        stopFocus();
-      else if (e.key === "Escape") {
+        return;
+      }
+
+      // --- Esc / help (existing) ---
+      if (e.key === "Escape") {
         closeModal();
         closeLogEditModal();
-        $("focusAlert").classList.add("hidden");
-        $("toast").classList.add("hidden");
+        $("focusAlert")?.classList.add("hidden");
+        $("toast")?.classList.add("hidden");
+        closeTrackingFabPanel();
       } else if (e.key === "?") {
         notify(
-          "Shortcuts: Space Start/Pause · R Resume · S Stop · Esc dismiss alert",
+          "Shortcuts: T Tracking · P Pause · S Start/Stop · Space Start/Pause · ←→ Phase · Esc dismiss",
         );
       }
     });
