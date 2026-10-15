@@ -2,6 +2,7 @@
   "use strict";
   const STORAGE_KEY = "lifeOS.data.v1";
   const SCHEMA_VERSION = 1;
+  const LIFEMAP_VIEW_KEY = "lifeOS.lifemapView.v1";
   const $ = (id) => document.getElementById(id);
   const uid = (prefix) =>
     prefix +
@@ -1587,6 +1588,8 @@
 
     const label = $("lifeMapZoomLevel");
     if (label) label.textContent = `${Math.round(lifeMapZoom * 100)}%`;
+
+    lifeMapSaveViewStateDebounced();
   }
 
   function renderLifeMap() {
@@ -4140,6 +4143,23 @@
       const key = e.key.toLowerCase();
       const focusedId = e.target.id || "";
 
+      // --- Alt+T: toggle tracking FAB panel ---
+      // Ctrl+T is reserved by Chromium (opens new tab), so we use Alt+T.
+      // preventDefault stops Windows browsers from stealing focus to the
+      // menu bar when Alt is pressed.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && key === "t") {
+        e.preventDefault();
+        const panel = $("trackingFabPanel");
+        const isOpen = panel && !panel.classList.contains("hidden");
+        if (isOpen) {
+          closeTrackingFabPanel();
+        } else {
+          openTrackingFabPanel();
+          setTimeout(() => $("trackingFabAction")?.focus(), 80);
+        }
+        return;
+      }
+
       // --- Ctrl / Cmd combos (work even while typing) ---
       if (e.ctrlKey || e.metaKey) {
         if (e.key === "Enter") {
@@ -4170,22 +4190,6 @@
           closeTrackingFabPanel();
           return;
         }
-      }
-
-      // --- T: toggle tracking FAB panel. Works even when the FAB
-      //     dropdown itself is focused, so the native <select> never
-      //     hijacks T to jump to T-named options. ---
-      if (key === "t") {
-        e.preventDefault();
-        const panel = $("trackingFabPanel");
-        const isOpen = panel && !panel.classList.contains("hidden");
-        if (isOpen) {
-          closeTrackingFabPanel();
-        } else {
-          openTrackingFabPanel();
-          setTimeout(() => $("trackingFabAction")?.focus(), 80);
-        }
-        return;
       }
 
       // --- Skip remaining shortcuts if user is typing ---
@@ -4256,7 +4260,7 @@
         closeTrackingFabPanel();
       } else if (e.key === "?") {
         notify(
-          "Shortcuts: T Tracking · P Pause · S Start/Stop · Space Start/Pause · ←→ Phase · Esc dismiss",
+          "Shortcuts: Alt+T Tracking · P Pause · S Start/Stop · Space Start/Pause · ←→ Phase · Esc dismiss",
         );
       }
     });
@@ -4525,21 +4529,53 @@
     lifeMapRenderNodeSelection();
   }
 
-  function lifeMapStartNewNode(type = "goal") {
+  /* ---- Viewport-aware new-node placement ---- */
+  function lifeMapViewportCenterWorld() {
+    const canvas = $("lifeMapCanvas");
+    if (!canvas) return { x: 120, y: 120 };
+    const rect = canvas.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return {
+      x: (cx - rect.left - lifeMapPanX) / lifeMapZoom,
+      y: (cy - rect.top - lifeMapPanY) / lifeMapZoom,
+    };
+  }
+
+  function lifeMapFindFreeSpot(baseX, baseY) {
     const data = lifeMapData();
-    let x = 120,
-      y = 120;
-    if (data.nodes.length) {
-      const maxX = Math.max(...data.nodes.map((n) => n.x));
-      const minY = Math.min(...data.nodes.map((n) => n.y));
-      x = maxX + 260;
-      y = Math.max(40, minY);
+    const NODE_W = 220;
+    const NODE_H = 130;
+    let x = baseX;
+    let y = baseY;
+    // If the target spot is already occupied, cascade down-right so
+    // repeated "New Node" clicks never stack on top of each other.
+    for (let i = 0; i < 40; i++) {
+      const clash = data.nodes.some(
+        (n) =>
+          Math.abs(n.x - x) < NODE_W * 0.7 && Math.abs(n.y - y) < NODE_H * 0.7,
+      );
+      if (!clash) return { x, y };
+      x += 32;
+      y += 32;
     }
+    return { x, y };
+  }
+
+  function lifeMapStartNewNode(type = "goal", worldPos = null) {
+    // Toolbar / empty-state → place at current viewport center so the
+    // node is always visible right where the user is looking.
+    // Right-click context menu → place exactly where they clicked.
+    const center = worldPos || lifeMapViewportCenterWorld();
+    const baseX = center.x - 100;
+    const baseY = center.y - 60;
+    const pos = lifeMapFindFreeSpot(baseX, baseY);
+
     const node = lifeMapCreateNode({
       name: "New " + lifeMapTypeLabel(type),
       type,
-      x,
-      y,
+      x: pos.x,
+      y: pos.y,
     });
     lifeMapSelectedIds.clear();
     lifeMapSelectedIds.add(node.id);
@@ -4550,10 +4586,93 @@
     notify("New Node তৈরি হয়েছে — Inspector থেকে Edit করো।");
   }
 
+  function lifeMapOpenCanvasContextMenu(clientX, clientY, worldPos) {
+    const menu = $("lifeMapContextMenu");
+    if (!menu) return;
+
+    menu.innerHTML = `
+      <button type="button" data-ctx-canvas="new-goal">◎ New Goal here</button>
+      <button type="button" data-ctx-canvas="new-step">↳ New Step here</button>
+      <button type="button" data-ctx-canvas="new-barrier">△ New Barrier here</button>
+      <button type="button" data-ctx-canvas="new-action">✓ New Action here</button>
+    `;
+    menu.classList.remove("hidden");
+
+    // Measure & reposition so the menu never spills off-screen.
+    menu.style.left = "0px";
+    menu.style.top = "0px";
+    const margin = 8;
+    const mRect = menu.getBoundingClientRect();
+    let left = clientX;
+    let top = clientY;
+    if (left + mRect.width > window.innerWidth - margin) {
+      left = Math.max(margin, window.innerWidth - mRect.width - margin);
+    }
+    if (top + mRect.height > window.innerHeight - margin) {
+      top = Math.max(margin, clientY - mRect.height);
+    }
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+
+    lifeMapContextMenuNodeId = null;
+    menu.dataset.canvasWorldX = String(worldPos.x);
+    menu.dataset.canvasWorldY = String(worldPos.y);
+  }
+
   /* ---------- Life Map filter state ---------- */
   let lifeMapFilterTypes = new Set();
   let lifeMapFilterStatuses = new Set();
   let lifeMapFilterMode = "and";
+
+  /* ---------- Life Map view state persistence ---------- */
+  let lifeMapViewSaveTimer = null;
+
+  function lifeMapSaveViewState() {
+    try {
+      const data = {
+        zoom: lifeMapZoom,
+        panX: lifeMapPanX,
+        panY: lifeMapPanY,
+        filterTypes: [...lifeMapFilterTypes],
+        filterStatuses: [...lifeMapFilterStatuses],
+        filterMode: lifeMapFilterMode,
+        search: $("lifeMapSearch")?.value || "",
+      };
+      localStorage.setItem(LIFEMAP_VIEW_KEY, JSON.stringify(data));
+    } catch (e) {}
+  }
+
+  function lifeMapSaveViewStateDebounced() {
+    const page = document.getElementById("page-lifemap");
+    if (!page || !page.classList.contains("active")) return;
+    clearTimeout(lifeMapViewSaveTimer);
+    lifeMapViewSaveTimer = setTimeout(lifeMapSaveViewState, 300);
+  }
+
+  function lifeMapLoadViewState() {
+    try {
+      const raw = localStorage.getItem(LIFEMAP_VIEW_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== "object") return false;
+      if (Number.isFinite(Number(data.zoom)))
+        lifeMapZoom = Math.max(0.1, Math.min(2.4, Number(data.zoom)));
+      if (Number.isFinite(Number(data.panX))) lifeMapPanX = Number(data.panX);
+      if (Number.isFinite(Number(data.panY))) lifeMapPanY = Number(data.panY);
+      if (Array.isArray(data.filterTypes))
+        lifeMapFilterTypes = new Set(data.filterTypes);
+      if (Array.isArray(data.filterStatuses))
+        lifeMapFilterStatuses = new Set(data.filterStatuses);
+      if (data.filterMode === "and" || data.filterMode === "or")
+        lifeMapFilterMode = data.filterMode;
+      if (typeof data.search === "string" && $("lifeMapSearch"))
+        $("lifeMapSearch").value = data.search;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   const LIFEMAP_ALL_STATUSES = [
     "not-started",
     "in-progress",
@@ -4672,6 +4791,8 @@
         count.textContent = `${totalCount} Node${totalCount === 1 ? "" : "s"}`;
       }
     }
+
+    lifeMapSaveViewStateDebounced();
   }
 
   function bindLifeMapFilterEvents() {
@@ -4994,25 +5115,6 @@
       lifeMapCloseNodeModal();
       renderLifeMap();
       notify("Node মুছে ফেলা হয়েছে।");
-    });
-
-    /* ---- Multi-select mode toggle ---- */
-    $("lifeMapMultiSelectMode")?.addEventListener("click", () => {
-      lifeMapHideHoverCard();
-      lifeMapMultiSelectMode = !lifeMapMultiSelectMode;
-      const btn = $("lifeMapMultiSelectMode");
-      if (btn) btn.setAttribute("aria-pressed", String(lifeMapMultiSelectMode));
-      if (canvas)
-        canvas.classList.toggle("multi-select-active", lifeMapMultiSelectMode);
-      if (!lifeMapMultiSelectMode) {
-        lifeMapRubberBandArmed = false;
-        canvas?.classList.remove("rubber-band-armed");
-      }
-      notify(
-        lifeMapMultiSelectMode
-          ? "Multi ON — প্যারেন্টে ক্লিক করলে সব child select হবে; খালি জায়গায় ডাবল-ক্লিক করলে rectangle দিয়ে select করা যাবে।"
-          : "Multi OFF।",
-      );
     });
 
     /* ---- Connection mode toggle ---- */
@@ -5373,6 +5475,7 @@
 
       const additive = event.shiftKey || event.ctrlKey || event.metaKey;
       const ctrlHeld = event.ctrlKey || event.metaKey;
+      const altHeld = event.altKey;
       lifeMapAdditiveMode = additive;
 
       if (node) {
@@ -5404,7 +5507,12 @@
         }
         const isAlreadySelected = lifeMapSelectedIds.has(node.id);
 
-        if (additive) {
+        if (altHeld) {
+          // Alt + click → parent + সব descendant একসঙ্গে select
+          lifeMapSelectedIds = lifeMapCollectDescendants(node.id);
+          lifeMapSelectedId = node.id;
+          lifeMapAdditiveMode = false;
+        } else if (additive) {
           if (isAlreadySelected) lifeMapSelectedIds.delete(node.id);
           else lifeMapSelectedIds.add(node.id);
           lifeMapSelectedId = lifeMapSelectedIds.has(node.id)
@@ -5412,11 +5520,6 @@
             : lifeMapSelectedIds.values().next().value || null;
         } else if (isAlreadySelected) {
           // 👈 ইতিমধ্যে-selected → selection অটুট
-          lifeMapSelectedId = node.id;
-          lifeMapAdditiveMode = false;
-        } else if (lifeMapMultiSelectMode) {
-          // Multi মোড + নতুন নোড → parent + সব descendant
-          lifeMapSelectedIds = lifeMapCollectDescendants(node.id);
           lifeMapSelectedId = node.id;
           lifeMapAdditiveMode = false;
         } else {
@@ -6986,6 +7089,11 @@
     }
     renderAll();
     renderLifeMap();
+    if (lifeMapLoadViewState()) {
+      lifeMapNeedsFit = false;
+    }
+    lifeMapRenderFilterPopover();
+    lifeMapApplyFilter();
     setInterval(tick, 500);
   }
   window.lifeOSApp = {
