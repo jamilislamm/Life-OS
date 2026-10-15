@@ -429,82 +429,125 @@
         <main>
           <!-- ============ DASHBOARD ============ -->
           <section id="page-dashboard" class="page active">
-            <div class="grid">
-              <article class="card span8">
-                <div class="sectionhead">
-                  <div>
-                    <h2>আজকের Sessions</h2>
-                    <p class="muted tiny" style="margin: 3px 0 0">
-                      Schedule করা Action নিজে থেকেই এখানে আসবে
-                    </p>
+            <div class="dash-shell">
+              <article class="card dash-main">
+                <div class="dash-toolbar">
+                  <div class="dash-date-nav">
+                    <button
+                      type="button"
+                      class="dash-nav-btn"
+                      id="dashPrevDay"
+                      aria-label="আগের দিন"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      class="dash-date-btn"
+                      id="dashDateBtn"
+                      aria-haspopup="dialog"
+                    >
+                      <span class="dash-date-ico" aria-hidden="true">📅</span>
+                      <span class="dash-date-label" id="dashDateLabel">আজ</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="dash-nav-btn"
+                      id="dashNextDay"
+                      aria-label="পরের দিন"
+                    >
+                      ›
+                    </button>
+                    <button
+                      type="button"
+                      class="dash-today-btn"
+                      id="dashTodayBtn"
+                    >
+                      Today
+                    </button>
                   </div>
-                  <input id="dashboardDate" type="date" />
+                  <div class="dash-toolbar-right">
+                    <span class="dash-progress-pill" id="dashProgressPill"
+                      >0 / 0</span
+                    >
+                    <button
+                      type="button"
+                      class="dash-settings-btn"
+                      id="dashSettingsBtn"
+                      aria-label="Grouping ও Filter"
+                      aria-expanded="false"
+                      aria-haspopup="dialog"
+                    >
+                      ⚙️
+                    </button>
+                  </div>
                 </div>
-                <div class="filters">
-                  <select id="taskFilterCategory">
-                    <option value="">সব Category</option>
-                  </select>
-                  <select id="taskGroup">
-                    <option value="action" selected>
-                      Action Library order অনুযায়ী
-                    </option>
-                    <option value="category">Category অনুযায়ী group</option>
-                    <option value="importance">
-                      Category importance অনুযায়ী
-                    </option>
-                    <option value="tag">Priority tag অনুযায়ী</option>
-                  </select>
-                </div>
-                <div id="todayTasks" class="list"></div>
+                <div id="todayTasks" class="list dash-session-list"></div>
               </article>
 
-              <article class="card span4">
-                <h2>আজকের সারাংশ</h2>
-                <div class="stack">
-                  <div class="stat">
-                    <div class="stat-label">আজ রেকর্ড করা সময়</div>
-                    <div id="todayRecorded" class="metric">0m</div>
+              <div class="dash-side">
+                <article class="card dash-summary">
+                  <h2 class="dash-summary-title">আজকের সারাংশ</h2>
+                  <div class="dash-summary-grid">
+                    <div class="dash-stat">
+                      <div class="dash-stat-label">রেকর্ডেড</div>
+                      <div class="dash-stat-value" id="todayRecorded">0m</div>
+                    </div>
+                    <div class="dash-stat">
+                      <div class="dash-stat-label">বাকি</div>
+                      <div class="dash-stat-value" id="todayPlanned">0m</div>
+                    </div>
+                    <div class="dash-stat">
+                      <div class="dash-stat-label">সম্পন্ন</div>
+                      <div class="dash-stat-value" id="todayCompletion">
+                        0 / 0
+                      </div>
+                    </div>
                   </div>
-                  <div class="stat">
-                    <div class="stat-label">বাকি planned session</div>
-                    <div id="todayPlanned" class="metric">0m</div>
-                  </div>
-                  <div class="stat">
-                    <div class="stat-label">সম্পন্ন কাজ</div>
-                    <div id="todayCompletion" class="metric">0 / 0</div>
-                  </div>
-                  <div class="notice">
-                    Focus Mode স্বাধীনভাবে চলে; Action-এর সময় মাপতে Time
-                    Tracking ব্যবহার করো।
-                  </div>
-                </div>
-              </article>
+                </article>
 
-              <article class="card span6">
-                <div class="sectionhead">
-                  <div>
+                <article class="card dash-other-card">
+                  <div class="dash-other-head">
                     <h2>Other Actions</h2>
-                    <p class="muted tiny" style="margin: 3px 0 0">
-                      আজকের Sessions-এ নেই এমন সক্রিয় Action — Add চাপলে শুধু
-                      আজকের তারিখে যোগ হবে
-                    </p>
+                    <span class="muted tiny">আজ নেই যেগুলো</span>
                   </div>
-                </div>
-                <div id="otherActions" class="list"></div>
-              </article>
+                  <div id="otherActions" class="list dash-other-list"></div>
+                </article>
+              </div>
+            </div>
 
-              <article class="card span6">
-                <h2>বর্তমান Time Tracking</h2>
-                <div id="trackingMini"></div>
-                <div class="row track-controls">
-                  <select id="startTrackingAction"></select>
-                  <button class="primary" id="startTrackingBtn">
-                    Start / Switch
-                  </button>
-                  <button id="pauseTrackingBtn" disabled>Pause</button>
-                  <button id="stopTrackingBtn">Stop</button>
-                </div>
-              </article>
+            <input type="hidden" id="dashboardDate" />
+            <input type="hidden" id="taskFilterCategory" />
+            <input type="hidden" id="taskGroup" />
+
+            <div
+              id="dashSettingsPopover"
+              class="dash-popover hidden"
+              role="dialog"
+              aria-label="Grouping ও Filter"
+            >
+              <div class="dash-pop-head">
+                <strong>Grouping</strong>
+                <button type="button" id="dashSettingsClose" aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <div class="dash-pop-seg" id="dashGroupSeg">
+                <button type="button" data-group="action" class="active">
+                  Action order
+                </button>
+                <button type="button" data-group="category">Category</button>
+                <button type="button" data-group="importance">
+                  Importance
+                </button>
+                <button type="button" data-group="tag">Tag</button>
+              </div>
+              <div class="dash-pop-head" style="margin-top: 14px">
+                <strong>Category filter</strong>
+              </div>
+              <select id="dashCategoryFilter">
+                <option value="">সব Category</option>
+              </select>
             </div>
           </section>
 
@@ -1972,6 +2015,52 @@
           <div class="rr-actions">
             <button type="button" id="rrCancel">Cancel</button>
             <button type="button" class="primary" id="rrSave">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== GENERIC DATE PICKER ===================== -->
+    <div id="datePickerOverlay" class="modal-overlay hidden">
+      <div
+        class="modal reminder-reschedule-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="datePickerTitle"
+      >
+        <h2 id="datePickerTitle">তারিখ বেছে নাও</h2>
+        <p
+          id="datePickerSubtitle"
+          class="muted tiny"
+          style="margin: -6px 0 14px"
+        ></p>
+        <div class="rr-calendar">
+          <div class="rr-head">
+            <button type="button" id="dpPrevMonth" aria-label="Previous month">
+              ‹
+            </button>
+            <div class="rr-title" id="dpMonthLabel">—</div>
+            <button type="button" id="dpNextMonth" aria-label="Next month">
+              ›
+            </button>
+          </div>
+          <div class="rr-weekdays">
+            <span>রবি</span><span>সোম</span><span>মঙ্গল</span><span>বুধ</span>
+            <span>বৃহঃ</span><span>শুক্র</span><span>শনি</span>
+          </div>
+          <div class="rr-grid" id="dpGrid"></div>
+        </div>
+        <div class="rr-quick">
+          <button type="button" data-dp-quick="today">আজ</button>
+          <button type="button" data-dp-quick="tomorrow">আগামীকাল</button>
+          <button type="button" data-dp-quick="+7">+৭ দিন</button>
+          <button type="button" data-dp-quick="+30">+৩০ দিন</button>
+        </div>
+        <div class="rr-foot">
+          <span id="dpSelectedLabel" class="muted tiny"></span>
+          <div class="rr-actions">
+            <button type="button" id="dpCancel">Cancel</button>
+            <button type="button" class="primary" id="dpSave">Save</button>
           </div>
         </div>
       </div>

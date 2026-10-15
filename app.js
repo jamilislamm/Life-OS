@@ -160,6 +160,8 @@
   let editingPresetId = null;
   let pipWindow = null;
   let lastReviewStart = "";
+  let dashboardGroupMode = "action";
+  let dashboardCategoryFilter = "";
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -341,6 +343,7 @@
     );
   }
   function fillSelect(el, items, placeholder, selected) {
+    if (!el) return;
     el.innerHTML = "";
     if (placeholder) {
       const o = document.createElement("option");
@@ -822,6 +825,183 @@
       if (e.target === $("reminderRescheduleOverlay")) {
         closeReminderRescheduleModal();
       }
+    });
+  }
+
+  /* ============================================================
+     GENERIC DATE PICKER
+     ============================================================ */
+  const DP_MONTHS_BN = [
+    "জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন",
+    "জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর",
+  ];
+
+  function formatDateBn(dateStr) {
+    if (!dateStr) return "";
+    try {
+      return new Date(dateStr + "T12:00:00").toLocaleDateString("bn-BD", {
+        year: "numeric", month: "short", day: "numeric",
+      });
+    } catch (e) { return dateStr; }
+  }
+
+  function relativeDateLabel(dateStr) {
+    const today = localDate();
+    if (dateStr === today) return "আজ";
+    if (dateStr === addDays(today, -1)) return "গতকাল";
+    if (dateStr === addDays(today, 1)) return "আগামীকাল";
+    return formatDateBn(dateStr);
+  }
+
+  const datePickerState = {
+    target: null, onSave: null,
+    viewYear: 0, viewMonth: 0, selectedDate: null,
+  };
+
+  function openDatePicker(targetInput, opts = {}) {
+    if (!targetInput) return;
+    const cur = targetInput.value || localDate();
+    const [y, m] = cur.split("-").map(Number);
+    datePickerState.target = targetInput;
+    datePickerState.onSave = opts.onSave || null;
+    datePickerState.viewYear = y;
+    datePickerState.viewMonth = m - 1;
+    datePickerState.selectedDate = cur;
+    const title = $("datePickerTitle");
+    if (title) title.textContent = opts.title || "তারিখ বেছে নাও";
+    const sub = $("datePickerSubtitle");
+    if (sub) sub.textContent = opts.subtitle || "";
+    renderDatePickerCalendar();
+    $("datePickerOverlay")?.classList.remove("hidden");
+  }
+
+  function closeDatePicker() {
+    $("datePickerOverlay")?.classList.add("hidden");
+    datePickerState.target = null;
+    datePickerState.onSave = null;
+  }
+
+  function renderDatePickerCalendar() {
+    const st = datePickerState;
+    const monthLabel = $("dpMonthLabel");
+    if (monthLabel) monthLabel.textContent = `${DP_MONTHS_BN[st.viewMonth]} ${st.viewYear}`;
+    const startDow = new Date(st.viewYear, st.viewMonth, 1).getDay();
+    const daysInMonth = new Date(st.viewYear, st.viewMonth + 1, 0).getDate();
+    const prevDays = new Date(st.viewYear, st.viewMonth, 0).getDate();
+    const todayStr = localDate();
+    const cells = [];
+    for (let i = startDow - 1; i >= 0; i--) {
+      const d = prevDays - i;
+      const dt = new Date(st.viewYear, st.viewMonth - 1, d);
+      cells.push({ date: localDate(dt), day: d, other: true });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dt = new Date(st.viewYear, st.viewMonth, d);
+      cells.push({ date: localDate(dt), day: d, other: false });
+    }
+    const tail = (7 - (cells.length % 7)) % 7;
+    for (let d = 1; d <= tail; d++) {
+      const dt = new Date(st.viewYear, st.viewMonth + 1, d);
+      cells.push({ date: localDate(dt), day: d, other: true });
+    }
+    const grid = $("dpGrid");
+    if (grid) {
+      grid.innerHTML = cells.map((c) => {
+        const cls = ["rr-cell"];
+        if (c.other) cls.push("other");
+        if (c.date === todayStr) cls.push("today");
+        if (c.date === st.selectedDate) cls.push("selected");
+        return `<button type="button" class="${cls.join(" ")}" data-dp-date="${c.date}">${c.day}</button>`;
+      }).join("");
+    }
+    const lbl = $("dpSelectedLabel");
+    if (lbl) {
+      lbl.textContent = st.selectedDate ? `নির্বাচিত: ${formatDateBn(st.selectedDate)}` : "";
+    }
+  }
+
+  function shiftDatePickerMonth(delta) {
+    const st = datePickerState;
+    let m = st.viewMonth + delta, y = st.viewYear;
+    if (m < 0) { m = 11; y -= 1; }
+    else if (m > 11) { m = 0; y += 1; }
+    st.viewMonth = m; st.viewYear = y;
+    renderDatePickerCalendar();
+  }
+
+  function setDatePickerDate(dateStr) {
+    const st = datePickerState;
+    st.selectedDate = dateStr;
+    const [y, m] = dateStr.split("-").map(Number);
+    st.viewYear = y; st.viewMonth = m - 1;
+    renderDatePickerCalendar();
+  }
+
+  function bindDatePicker() {
+    $("dpPrevMonth")?.addEventListener("click", () => shiftDatePickerMonth(-1));
+    $("dpNextMonth")?.addEventListener("click", () => shiftDatePickerMonth(1));
+    $("dpGrid")?.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-dp-date]");
+      if (!b) return;
+      setDatePickerDate(b.dataset.dpDate);
+    });
+    document.querySelectorAll("#datePickerOverlay [data-dp-quick]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const kind = b.dataset.dpQuick;
+        const today = localDate();
+        let target = today;
+        if (kind === "tomorrow") target = addDays(today, 1);
+        else if (kind === "+7") target = addDays(today, 7);
+        else if (kind === "+30") target = addDays(today, 30);
+        setDatePickerDate(target);
+      });
+    });
+    $("dpCancel")?.addEventListener("click", closeDatePicker);
+    $("dpSave")?.addEventListener("click", () => {
+      const st = datePickerState;
+      if (!st.target || !st.selectedDate) { closeDatePicker(); return; }
+      const input = st.target, date = st.selectedDate, cb = st.onSave;
+      closeDatePicker();
+      input.value = date;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      if (typeof cb === "function") cb(date);
+      refreshDateButtons();
+    });
+    $("datePickerOverlay")?.addEventListener("click", (e) => {
+      if (e.target === $("datePickerOverlay")) closeDatePicker();
+    });
+  }
+
+  function refreshDateButton(btn, input) {
+    const text = btn.querySelector(".date-input-text");
+    if (!text) return;
+    text.textContent = input.value ? formatDateBn(input.value) : "তারিখ বেছে নাও";
+  }
+
+  function refreshDateButtons() {
+    document.querySelectorAll(".date-input-btn").forEach((btn) => {
+      const input = document.getElementById(btn.dataset.forInput);
+      if (input) refreshDateButton(btn, input);
+    });
+  }
+
+  function upgradeDateInputs() {
+    document.querySelectorAll('input[type="date"]').forEach((input) => {
+      if (input.dataset.dpUpgraded === "1") return;
+      if (input.type === "hidden") return;
+      input.dataset.dpUpgraded = "1";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "date-input-btn";
+      btn.dataset.forInput = input.id || "";
+      btn.innerHTML = `<span class="date-input-ico" aria-hidden="true">📅</span><span class="date-input-text"></span>`;
+      input.classList.add("hidden");
+      input.parentNode.insertBefore(btn, input);
+      btn.addEventListener("click", () => {
+        refreshDateButton(btn, input);
+        openDatePicker(input);
+      });
+      refreshDateButton(btn, input);
     });
   }
 
@@ -1997,9 +2177,9 @@
       acts = activeActions(),
       presets = state.presets;
     fillSelect($("actionCategory"), cats, "Category বেছে নাও");
-    if ($("taskFilterCategory")) {
-      const prev = $("taskFilterCategory").value;
-      fillSelect($("taskFilterCategory"), cats, "সব Category", prev);
+    if ($("dashCategoryFilter")) {
+      const prev = $("dashCategoryFilter").value;
+      fillSelect($("dashCategoryFilter"), cats, "সব Category", prev);
     }
     fillSelect($("startTrackingAction"), acts, "Action বেছে নাও");
     fillSelect($("trackingAction"), acts, "Action বেছে নাও");
@@ -2073,23 +2253,25 @@
   function renderToday() {
     const date = getSelectedDate();
     ensureScheduledTasks(date);
-    $("todayLabel").textContent = new Date().toLocaleDateString("bn-BD", {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+
+    const dateLabel = $("dashDateLabel");
+    if (dateLabel) dateLabel.textContent = relativeDateLabel(date);
     $("dashboardDate").value = date;
-    const fc = $("taskFilterCategory")?.value || "";
-    const group = $("taskGroup")?.value || "action";
+    const tl = $("todayLabel");
+    if (tl) tl.textContent = relativeDateLabel(date);
+
+    const fc = dashboardCategoryFilter;
+    const group = dashboardGroupMode;
+
     const sessions = sessionsForDate(date).filter(
       (t) => !fc || t.categoryId === fc,
     );
+
     const host = $("todayTasks");
-    if (!sessions.length)
+    if (!sessions.length) {
       host.innerHTML =
-        '<div class="empty">আজকের Sessions ফাঁকা। নিচের Other Actions প্যানেল থেকে Add করো।</div>';
-    else {
+        '<div class="empty">আজকের Sessions ফাঁকা। ডান পাশের Other Actions থেকে Add করো।</div>';
+    } else {
       const keyOf =
         group === "category"
           ? (t) => categoryName(t.categoryId)
@@ -2098,18 +2280,16 @@
             : group === "tag"
               ? (t) => t.tag || "Untagged"
               : null;
-      const sorted = sessions
-        .slice()
-        .sort(
-          keyOf
-            ? (a, b) => String(keyOf(a)).localeCompare(String(keyOf(b)))
-            : (a, b) =>
-                (Number(actionById(a.actionId)?.order) || 0) -
-                  (Number(actionById(b.actionId)?.order) || 0) ||
-                String(a.name).localeCompare(String(b.name)),
-        );
-      let html = "",
-        lastKey = null;
+      const sorted = sessions.slice().sort(
+        keyOf
+          ? (a, b) => String(keyOf(a)).localeCompare(String(keyOf(b)))
+          : (a, b) =>
+              (Number(actionById(a.actionId)?.order) || 0) -
+                (Number(actionById(b.actionId)?.order) || 0) ||
+              String(a.name).localeCompare(String(b.name)),
+      );
+      let html = "";
+      let lastKey = null;
       sorted.forEach((t) => {
         if (keyOf) {
           const k = String(keyOf(t));
@@ -2122,6 +2302,7 @@
       });
       host.innerHTML = html;
     }
+
     const allSess = sessionsForDate(date);
     const logs = logsForDate(date);
     const recorded =
@@ -2136,8 +2317,12 @@
         .filter((t) => t.status !== "done")
         .reduce((s, t) => s + (t.plannedMinutes || 0), 0),
     );
-    $("todayCompletion").textContent =
-      `${allSess.filter((t) => t.status === "done").length} / ${allSess.length}`;
+    const doneCount = allSess.filter((t) => t.status === "done").length;
+    $("todayCompletion").textContent = `${doneCount} / ${allSess.length}`;
+
+    const pill = $("dashProgressPill");
+    if (pill) pill.textContent = `${doneCount} / ${allSess.length}`;
+
     renderOtherActions(date);
     renderTrackingMini();
     renderFocusMini();
@@ -2387,15 +2572,20 @@
       ? new Date(state.tracking.originalStartAt).toLocaleTimeString()
       : "—";
 
-    $("trackingMini").innerHTML = a
-      ? `<div class="row"><span class="${pillCls}">${pillTxt}</span><strong>${escapeHTML(actionEmojiName(a))}</strong></div><div class="metric" style="margin-top:10px">${fmt(s)}</div><div class="tiny">${paused ? "Paused at " + new Date(state.tracking.pausedAt).toLocaleTimeString() : "শুরু: " + since}</div>`
-      : '<div class="muted">এখন কোনো Action track হচ্ছে না।</div>';
+    const miniEl = $("trackingMini");
+    if (miniEl) {
+      miniEl.innerHTML = a
+        ? `<div class="row"><span class="${pillCls}">${pillTxt}</span><strong>${escapeHTML(actionEmojiName(a))}</strong></div><div class="metric" style="margin-top:10px">${fmt(s)}</div><div class="tiny">${paused ? "Paused at " + new Date(state.tracking.pausedAt).toLocaleTimeString() : "শুরু: " + since}</div>`
+        : '<div class="muted">এখন কোনো Action track হচ্ছে না।</div>';
+    }
 
-    $("trackingCurrent").innerHTML = a
-      ? `<div class="notice${paused ? "" : " active"}"><strong>${escapeHTML(actionEmojiName(a))}</strong> ${paused ? "paused" : "track হচ্ছে"}<br><span class="metric">${fmt(s)}</span><br><span class="tiny">${paused ? "Paused at: " + new Date(state.tracking.pausedAt).toLocaleString() : "শুরু: " + since}</span></div>`
-      : '<div class="empty">কোনো চলমান Time Tracking নেই।</div>';
+    const curEl = $("trackingCurrent");
+    if (curEl) {
+      curEl.innerHTML = a
+        ? `<div class="notice${paused ? "" : " active"}"><strong>${escapeHTML(actionEmojiName(a))}</strong> ${paused ? "paused" : "track হচ্ছে"}<br><span class="metric">${fmt(s)}</span><br><span class="tiny">${paused ? "Paused at: " + new Date(state.tracking.pausedAt).toLocaleString() : "শুরু: " + since}</span></div>`
+        : '<div class="empty">কোনো চলমান Time Tracking নেই।</div>';
+    }
 
-    // Sync pause / resume button labels & disabled state
     const isTracking = !!a;
     const label = paused ? "Resume" : "Pause";
     ["pauseTrackingBtn", "trackingPause"].forEach((id) => {
@@ -2981,6 +3171,7 @@
     updateTodayNavBadge();
     renderTrackingFabActions();
     updateTrackingFab();
+    refreshDateButtons();
     updateLiveNumbers();
   }
   function resetActionForm() {
@@ -3321,8 +3512,72 @@
     syncThemeButton();
   }
   function bindEvents() {
-    $("taskFilterCategory").addEventListener("change", renderToday);
-    $("taskGroup").addEventListener("change", renderToday);
+    $("dashDateBtn")?.addEventListener("click", () => {
+      openDatePicker($("dashboardDate"), {
+        title: "তারিখ বেছে নাও",
+        subtitle: "কোন দিনের Sessions দেখতে চাও?",
+        onSave: () => renderToday(),
+      });
+    });
+    $("dashPrevDay")?.addEventListener("click", () => {
+      $("dashboardDate").value = addDays(getSelectedDate(), -1);
+      renderToday();
+    });
+    $("dashNextDay")?.addEventListener("click", () => {
+      $("dashboardDate").value = addDays(getSelectedDate(), 1);
+      renderToday();
+    });
+    $("dashTodayBtn")?.addEventListener("click", () => {
+      $("dashboardDate").value = localDate();
+      renderToday();
+    });
+
+    const dashPop = $("dashSettingsPopover");
+    const dashSettingsBtn = $("dashSettingsBtn");
+    const closeDashPopover = () => {
+      dashPop?.classList.add("hidden");
+      dashSettingsBtn?.setAttribute("aria-expanded", "false");
+    };
+    dashSettingsBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!dashPop) return;
+      if (dashPop.classList.contains("hidden")) {
+        dashPop.classList.remove("hidden");
+        const rect = dashSettingsBtn.getBoundingClientRect();
+        const pw = dashPop.offsetWidth;
+        const ph = dashPop.offsetHeight;
+        let left = rect.right - pw;
+        let top = rect.bottom + 8;
+        if (left < 8) left = 8;
+        if (top + ph > window.innerHeight - 8)
+          top = Math.max(8, rect.top - ph - 8);
+        dashPop.style.left = left + "px";
+        dashPop.style.top = top + "px";
+        dashSettingsBtn.setAttribute("aria-expanded", "true");
+      } else {
+        closeDashPopover();
+      }
+    });
+    $("dashSettingsClose")?.addEventListener("click", closeDashPopover);
+    $("dashGroupSeg")?.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-group]");
+      if (!b) return;
+      dashboardGroupMode = b.dataset.group;
+      $("dashGroupSeg")
+        .querySelectorAll("button")
+        .forEach((x) => x.classList.toggle("active", x === b));
+      renderToday();
+    });
+    $("dashCategoryFilter")?.addEventListener("change", (e) => {
+      dashboardCategoryFilter = e.target.value || "";
+      renderToday();
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (!dashPop || dashPop.classList.contains("hidden")) return;
+      if (dashPop.contains(e.target)) return;
+      if (dashSettingsBtn?.contains(e.target)) return;
+      closeDashPopover();
+    });
     $("scheduleType").addEventListener("change", () => {
       $("scheduleDaysWrap").classList.toggle(
         "hidden",
@@ -3504,11 +3759,7 @@
       renderAll();
       notify("Time Log আপডেট হয়েছে।");
     });
-    $("startTrackingBtn").addEventListener("click", () =>
-      startTracking($("startTrackingAction").value),
-    );
-    $("stopTrackingBtn").addEventListener("click", stopTracking);
-    $("pauseTrackingBtn").addEventListener("click", toggleTrackingPause);
+
     $("trackingStart").addEventListener("click", () =>
       startTracking($("trackingAction").value),
     );
@@ -7066,6 +7317,8 @@
     bindLifeMapEvents();
     bindTrackingFab();
     bindReminderRescheduleCalendar();
+    bindDatePicker();
+    upgradeDateInputs();
     lifeMapRelocatePopups();
     syncThemeButton();
     resetPresetForm();
