@@ -832,17 +832,31 @@
      GENERIC DATE PICKER
      ============================================================ */
   const DP_MONTHS_BN = [
-    "জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন",
-    "জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর",
+    "জানুয়ারি",
+    "ফেব্রুয়ারি",
+    "মার্চ",
+    "এপ্রিল",
+    "মে",
+    "জুন",
+    "জুলাই",
+    "আগস্ট",
+    "সেপ্টেম্বর",
+    "অক্টোবর",
+    "নভেম্বর",
+    "ডিসেম্বর",
   ];
 
   function formatDateBn(dateStr) {
     if (!dateStr) return "";
     try {
       return new Date(dateStr + "T12:00:00").toLocaleDateString("bn-BD", {
-        year: "numeric", month: "short", day: "numeric",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
       });
-    } catch (e) { return dateStr; }
+    } catch (e) {
+      return dateStr;
+    }
   }
 
   function relativeDateLabel(dateStr) {
@@ -854,8 +868,11 @@
   }
 
   const datePickerState = {
-    target: null, onSave: null,
-    viewYear: 0, viewMonth: 0, selectedDate: null,
+    target: null,
+    onSave: null,
+    viewYear: 0,
+    viewMonth: 0,
+    selectedDate: null,
   };
 
   function openDatePicker(targetInput, opts = {}) {
@@ -884,7 +901,8 @@
   function renderDatePickerCalendar() {
     const st = datePickerState;
     const monthLabel = $("dpMonthLabel");
-    if (monthLabel) monthLabel.textContent = `${DP_MONTHS_BN[st.viewMonth]} ${st.viewYear}`;
+    if (monthLabel)
+      monthLabel.textContent = `${DP_MONTHS_BN[st.viewMonth]} ${st.viewYear}`;
     const startDow = new Date(st.viewYear, st.viewMonth, 1).getDay();
     const daysInMonth = new Date(st.viewYear, st.viewMonth + 1, 0).getDate();
     const prevDays = new Date(st.viewYear, st.viewMonth, 0).getDate();
@@ -906,26 +924,37 @@
     }
     const grid = $("dpGrid");
     if (grid) {
-      grid.innerHTML = cells.map((c) => {
-        const cls = ["rr-cell"];
-        if (c.other) cls.push("other");
-        if (c.date === todayStr) cls.push("today");
-        if (c.date === st.selectedDate) cls.push("selected");
-        return `<button type="button" class="${cls.join(" ")}" data-dp-date="${c.date}">${c.day}</button>`;
-      }).join("");
+      grid.innerHTML = cells
+        .map((c) => {
+          const cls = ["rr-cell"];
+          if (c.other) cls.push("other");
+          if (c.date === todayStr) cls.push("today");
+          if (c.date === st.selectedDate) cls.push("selected");
+          return `<button type="button" class="${cls.join(" ")}" data-dp-date="${c.date}">${c.day}</button>`;
+        })
+        .join("");
     }
     const lbl = $("dpSelectedLabel");
     if (lbl) {
-      lbl.textContent = st.selectedDate ? `নির্বাচিত: ${formatDateBn(st.selectedDate)}` : "";
+      lbl.textContent = st.selectedDate
+        ? `নির্বাচিত: ${formatDateBn(st.selectedDate)}`
+        : "";
     }
   }
 
   function shiftDatePickerMonth(delta) {
     const st = datePickerState;
-    let m = st.viewMonth + delta, y = st.viewYear;
-    if (m < 0) { m = 11; y -= 1; }
-    else if (m > 11) { m = 0; y += 1; }
-    st.viewMonth = m; st.viewYear = y;
+    let m = st.viewMonth + delta,
+      y = st.viewYear;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    } else if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    st.viewMonth = m;
+    st.viewYear = y;
     renderDatePickerCalendar();
   }
 
@@ -933,7 +962,8 @@
     const st = datePickerState;
     st.selectedDate = dateStr;
     const [y, m] = dateStr.split("-").map(Number);
-    st.viewYear = y; st.viewMonth = m - 1;
+    st.viewYear = y;
+    st.viewMonth = m - 1;
     renderDatePickerCalendar();
   }
 
@@ -945,22 +975,29 @@
       if (!b) return;
       setDatePickerDate(b.dataset.dpDate);
     });
-    document.querySelectorAll("#datePickerOverlay [data-dp-quick]").forEach((b) => {
-      b.addEventListener("click", () => {
-        const kind = b.dataset.dpQuick;
-        const today = localDate();
-        let target = today;
-        if (kind === "tomorrow") target = addDays(today, 1);
-        else if (kind === "+7") target = addDays(today, 7);
-        else if (kind === "+30") target = addDays(today, 30);
-        setDatePickerDate(target);
+    document
+      .querySelectorAll("#datePickerOverlay [data-dp-quick]")
+      .forEach((b) => {
+        b.addEventListener("click", () => {
+          const kind = b.dataset.dpQuick;
+          const today = localDate();
+          let target = today;
+          if (kind === "tomorrow") target = addDays(today, 1);
+          else if (kind === "+7") target = addDays(today, 7);
+          else if (kind === "+30") target = addDays(today, 30);
+          setDatePickerDate(target);
+        });
       });
-    });
     $("dpCancel")?.addEventListener("click", closeDatePicker);
     $("dpSave")?.addEventListener("click", () => {
       const st = datePickerState;
-      if (!st.target || !st.selectedDate) { closeDatePicker(); return; }
-      const input = st.target, date = st.selectedDate, cb = st.onSave;
+      if (!st.target || !st.selectedDate) {
+        closeDatePicker();
+        return;
+      }
+      const input = st.target,
+        date = st.selectedDate,
+        cb = st.onSave;
       closeDatePicker();
       input.value = date;
       input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -975,7 +1012,9 @@
   function refreshDateButton(btn, input) {
     const text = btn.querySelector(".date-input-text");
     if (!text) return;
-    text.textContent = input.value ? formatDateBn(input.value) : "তারিখ বেছে নাও";
+    text.textContent = input.value
+      ? formatDateBn(input.value)
+      : "তারিখ বেছে নাও";
   }
 
   function refreshDateButtons() {
@@ -2280,14 +2319,16 @@
             : group === "tag"
               ? (t) => t.tag || "Untagged"
               : null;
-      const sorted = sessions.slice().sort(
-        keyOf
-          ? (a, b) => String(keyOf(a)).localeCompare(String(keyOf(b)))
-          : (a, b) =>
-              (Number(actionById(a.actionId)?.order) || 0) -
-                (Number(actionById(b.actionId)?.order) || 0) ||
-              String(a.name).localeCompare(String(b.name)),
-      );
+      const sorted = sessions
+        .slice()
+        .sort(
+          keyOf
+            ? (a, b) => String(keyOf(a)).localeCompare(String(keyOf(b)))
+            : (a, b) =>
+                (Number(actionById(a.actionId)?.order) || 0) -
+                  (Number(actionById(b.actionId)?.order) || 0) ||
+                String(a.name).localeCompare(String(b.name)),
+        );
       let html = "";
       let lastKey = null;
       sorted.forEach((t) => {
@@ -3797,7 +3838,31 @@
       };
       if (id) {
         const i = state.actions.findIndex((a) => a.id === id);
-        if (i >= 0) state.actions[i] = { ...state.actions[i], ...item };
+        if (i >= 0) {
+          const prev = state.actions[i];
+          const oldDailyTarget = Number(prev.dailyTarget) || 0;
+          const oldName = prev.name;
+          const oldCategoryId = prev.categoryId;
+          state.actions[i] = { ...prev, ...item };
+
+          // Sync today's & future open sessions with the new values,
+          // but only if they were not manually customised. A session
+          // is considered "auto" when its plannedMinutes still equals
+          // the old daily target, its name still matches the old
+          // action name, and its category matches the old category.
+          const newDailyTarget = Number(item.dailyTarget) || 0;
+          const today = localDate();
+          state.tasks.forEach((t) => {
+            if (t.actionId !== id) return;
+            if (t.dismissed) return;
+            if (t.date < today) return;
+            if (t.status === "done") return;
+            if (Number(t.plannedMinutes) === oldDailyTarget)
+              t.plannedMinutes = newDailyTarget;
+            if (t.name === oldName) t.name = item.name;
+            if (t.categoryId === oldCategoryId) t.categoryId = item.categoryId;
+          });
+        }
       } else
         state.actions.push({
           ...item,
