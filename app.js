@@ -160,6 +160,8 @@
           onDayChange: "clear-all",
         },
       },
+      actionCheckins: {},
+      monthlyTracker: { month: localDate().slice(0, 7), hidden: [] },
     };
   };
   let state = loadState();
@@ -247,6 +249,22 @@
                 : "clear-all",
             };
           })(),
+        },
+        actionCheckins:
+          data.actionCheckins &&
+          typeof data.actionCheckins === "object" &&
+          !Array.isArray(data.actionCheckins)
+            ? data.actionCheckins
+            : {},
+        monthlyTracker: {
+          month:
+            typeof data.monthlyTracker?.month === "string" &&
+            /^\d{4}-\d{2}$/.test(data.monthlyTracker.month)
+              ? data.monthlyTracker.month
+              : localDate().slice(0, 7),
+          hidden: Array.isArray(data.monthlyTracker?.hidden)
+            ? data.monthlyTracker.hidden
+            : [],
         },
       };
     } catch (e) {
@@ -3259,6 +3277,7 @@
   function renderAll() {
     renderSelects();
     renderToday();
+    renderMonthlyTracker();
     renderActions();
     renderTrackingMini();
     renderFocus();
@@ -7523,6 +7542,226 @@
   }
 
   /* ============================================================
+     MONTHLY ACTION TRACKER
+     ============================================================ */
+  function isActionDoneOnDate(actionId, date) {
+    if (state.actionCheckins?.[actionId]?.[date]) return true;
+    return state.logs.some((l) => l.actionId === actionId && l.date === date);
+  }
+
+  function toggleTrackerCell(actionId, date) {
+    if (date > localDate()) {
+      notify("ভবিষ্যতের দিনে চেক করা যায় না।");
+      return;
+    }
+    const hasLog = state.logs.some(
+      (l) => l.actionId === actionId && l.date === date,
+    );
+    const hasDoneTask = state.tasks.some(
+      (t) => t.actionId === actionId && t.date === date && t.status === "done",
+    );
+    if (hasLog) {
+      notify("এই দিনে Time Log আছে — Log থেকে edit করো।");
+      return;
+    }
+    if (hasDoneTask) {
+      notify(
+        "এই দিনে Today থেকে কাজ সম্পন্ন হয়েছে — Today-এ গিয়ে uncheck করো।",
+      );
+      return;
+    }
+    if (hasDoneTask) {
+      notify(
+        "এই দিনে Today থেকে কাজ সম্পন্ন হয়েছে — Today-এ গিয়ে uncheck করো।",
+      );
+      return;
+    }
+    if (!state.actionCheckins) state.actionCheckins = {};
+    if (!state.actionCheckins[actionId]) state.actionCheckins[actionId] = {};
+    if (state.actionCheckins[actionId][date]) {
+      delete state.actionCheckins[actionId][date];
+    } else {
+      state.actionCheckins[actionId][date] = true;
+    }
+    persist();
+    renderMonthlyTracker();
+  }
+
+  function shiftTrackerMonth(delta) {
+    const cur = state.monthlyTracker.month || localDate().slice(0, 7);
+    const [y, m] = cur.split("-").map(Number);
+    let ny = y;
+    let nm = m + delta;
+    if (nm < 1) {
+      nm = 12;
+      ny--;
+    } else if (nm > 12) {
+      nm = 1;
+      ny++;
+    }
+    state.monthlyTracker.month = `${ny}-${String(nm).padStart(2, "0")}`;
+    persist();
+    renderMonthlyTracker();
+  }
+
+  function jumpTrackerToCurrentMonth() {
+    state.monthlyTracker.month = localDate().slice(0, 7);
+    persist();
+    renderMonthlyTracker();
+  }
+
+  function renderMonthlyTracker() {
+    const host = $("trackerGrid");
+    if (!host) return;
+
+    const month = state.monthlyTracker?.month || localDate().slice(0, 7);
+    const [y, m] = month.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const today = localDate();
+
+    const monthLabel = $("trackerMonthLabel");
+    if (monthLabel) monthLabel.textContent = `${RR_MONTHS_BN[m - 1]} ${y}`;
+
+    const hidden = new Set(state.monthlyTracker?.hidden || []);
+    const acts = activeActions().filter((a) => !hidden.has(a.id));
+
+    if (!acts.length) {
+      host.style.gridTemplateColumns = "1fr";
+      host.innerHTML =
+        '<div class="tracker-empty">সব Action hide করা আছে — ⚙️ Actions থেকে দেখাও</div>';
+      return;
+    }
+
+    const logIdx = new Set();
+    state.logs.forEach((l) => {
+      if (l.actionId) logIdx.add(`${l.actionId}|${l.date}`);
+    });
+    state.tasks.forEach((t) => {
+      if (t.actionId && t.status === "done") {
+        logIdx.add(`${t.actionId}|${t.date}`);
+      }
+    });
+    const isDone = (aid, d) =>
+      !!state.actionCheckins?.[aid]?.[d] || logIdx.has(`${aid}|${d}`);
+
+    const isCurrentMonth = month === today.slice(0, 7);
+    const maxDayForCount = isCurrentMonth
+      ? Number(today.slice(8, 10))
+      : daysInMonth;
+
+    let html = "";
+    html += `<div class="tracker-cell-label tracker-header-empty"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = `${month}-${String(d).padStart(2, "0")}`;
+      const isToday = date === today;
+      html += `<div class="tracker-cell-header${isToday ? " today" : ""}">${d}</div>`;
+    }
+    html += `<div class="tracker-cell-header tracker-summary-head">মোট</div>`;
+
+    acts.forEach((a) => {
+      html += `<div class="tracker-cell-label" title="${escapeHTML(actionEmojiName(a))}">${escapeHTML(actionEmojiName(a))}</div>`;
+      let doneCount = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const date = `${month}-${String(d).padStart(2, "0")}`;
+        const done = isDone(a.id, date);
+        if (done && d <= maxDayForCount) doneCount++;
+        const isFuture = date > today;
+        const isToday = date === today;
+        const cls = ["tracker-cell"];
+        if (done) cls.push("done");
+        if (isFuture) cls.push("future");
+        if (isToday) cls.push("today");
+        const mark = done ? "✓" : isFuture ? "" : "·";
+        html += `<button type="button" class="${cls.join(" ")}" data-tracker-cell="${escapeHTML(a.id)}" data-tracker-date="${escapeHTML(date)}" aria-label="${d} ${escapeHTML(a.name)}">${mark}</button>`;
+      }
+
+      let longest = 0;
+      let run = 0;
+      for (let d = 1; d <= maxDayForCount; d++) {
+        const cellDate = `${month}-${String(d).padStart(2, "0")}`;
+        if (isDone(a.id, cellDate)) {
+          run++;
+          if (run > longest) longest = run;
+        } else {
+          run = 0;
+        }
+      }
+      const streak = longest;
+
+      const summary = `${doneCount}/${maxDayForCount}${streak > 0 ? ` · 🔥${streak}` : ""}`;
+      html += `<div class="tracker-summary" title="এই মাসে সর্বোচ্চ ধারাবাহিক ${streak} দিন">${summary}</div>`;
+    });
+
+    host.style.gridTemplateColumns = `170px repeat(${daysInMonth}, 34px) 100px`;
+    host.innerHTML = html;
+  }
+
+  function openTrackerSettings() {
+    const host = $("trackerSettingsList");
+    if (!host) return;
+    const modal = $("trackerSettingsModal");
+    if (modal && modal.parentNode !== document.body) {
+      document.body.appendChild(modal);
+    }
+    const hidden = new Set(state.monthlyTracker?.hidden || []);
+    const acts = activeActions();
+    if (!acts.length) {
+      host.innerHTML = '<div class="empty">কোনো active Action নেই</div>';
+    } else {
+      host.innerHTML = acts
+        .map(
+          (a) => `
+        <label class="checkboxrow tracker-settings-item">
+          <input type="checkbox" data-tracker-show="${escapeHTML(a.id)}" ${hidden.has(a.id) ? "" : "checked"}>
+          <span>${escapeHTML(actionEmojiName(a))}</span>
+        </label>
+      `,
+        )
+        .join("");
+    }
+    $("trackerSettingsModal")?.classList.remove("hidden");
+  }
+
+  function closeTrackerSettings() {
+    $("trackerSettingsModal")?.classList.add("hidden");
+  }
+
+  function saveTrackerSettings() {
+    const hidden = [];
+    document
+      .querySelectorAll("#trackerSettingsList [data-tracker-show]")
+      .forEach((cb) => {
+        if (!cb.checked) hidden.push(cb.dataset.trackerShow);
+      });
+    state.monthlyTracker.hidden = hidden;
+    persist();
+    closeTrackerSettings();
+    renderMonthlyTracker();
+    notify("Tracker আপডেট হয়েছে।");
+  }
+
+  function bindTrackerEvents() {
+    $("trackerPrevMonth")?.addEventListener("click", () =>
+      shiftTrackerMonth(-1),
+    );
+    $("trackerNextMonth")?.addEventListener("click", () =>
+      shiftTrackerMonth(1),
+    );
+    $("trackerThisMonth")?.addEventListener("click", jumpTrackerToCurrentMonth);
+    $("trackerSettingsBtn")?.addEventListener("click", openTrackerSettings);
+    $("trackerSettingsCancel")?.addEventListener("click", closeTrackerSettings);
+    $("trackerSettingsSave")?.addEventListener("click", saveTrackerSettings);
+    $("trackerSettingsModal")?.addEventListener("click", (e) => {
+      if (e.target === $("trackerSettingsModal")) closeTrackerSettings();
+    });
+    $("trackerGrid")?.addEventListener("click", (e) => {
+      const cell = e.target.closest("[data-tracker-cell]");
+      if (!cell) return;
+      toggleTrackerCell(cell.dataset.trackerCell, cell.dataset.trackerDate);
+    });
+  }
+
+  /* ============================================================
      VISUAL REMINDERS — Image + OS Notification + Custom Sound
      ============================================================ */
   const VREM_KEY = "lifeOS.visualReminders.v1";
@@ -8111,6 +8350,7 @@
     upgradeDateInputs();
     bindChallengeEvents();
     bindUpcomingModal();
+    bindTrackerEvents();
     lastChallengeDay = challengeDayKey();
     lifeMapRelocatePopups();
     syncThemeButton();

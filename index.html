@@ -555,6 +555,48 @@
               </div>
             </div>
 
+            <article class="card tracker-card">
+              <div class="tracker-head">
+                <h2>📊 <span id="trackerMonthLabel">—</span></h2>
+                <div class="tracker-head-actions">
+                  <button
+                    type="button"
+                    class="tracker-nav"
+                    id="trackerPrevMonth"
+                    aria-label="আগের মাস"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    class="tracker-this-month"
+                    id="trackerThisMonth"
+                  >
+                    এই মাস
+                  </button>
+                  <button
+                    type="button"
+                    class="tracker-nav"
+                    id="trackerNextMonth"
+                    aria-label="পরের মাস"
+                  >
+                    ›
+                  </button>
+                  <button
+                    type="button"
+                    class="tracker-settings"
+                    id="trackerSettingsBtn"
+                    title="Actions দেখাও/লুকাও"
+                  >
+                    ⚙️ Actions
+                  </button>
+                </div>
+              </div>
+              <div class="tracker-scroll">
+                <div id="trackerGrid" class="tracker-grid"></div>
+              </div>
+            </article>
+
             <input type="hidden" id="dashboardDate" />
             <input type="hidden" id="taskFilterCategory" />
             <input type="hidden" id="taskGroup" />
@@ -589,6 +631,30 @@
               </select>
             </div>
           </section>
+
+          <div id="trackerSettingsModal" class="modal-overlay hidden">
+            <div
+              class="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="trackerSettingsTitle"
+            >
+              <h2 id="trackerSettingsTitle">Tracker-এ কোন Actions দেখাবে</h2>
+              <p class="muted tiny" style="margin: -8px 0 12px">
+                Uncheck করা Actions tracker-এ দেখা যাবে না।
+              </p>
+              <div id="trackerSettingsList" class="stack"></div>
+              <div
+                class="row"
+                style="justify-content: flex-end; margin-top: 18px"
+              >
+                <button type="button" id="trackerSettingsCancel">Cancel</button>
+                <button type="button" class="primary" id="trackerSettingsSave">
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
 
           <!-- ===================== CHALLENGE MODAL ===================== -->
           <div id="challengeModal" class="modal-overlay hidden">
