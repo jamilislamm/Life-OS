@@ -150,6 +150,16 @@
         mode: "both",
         trackingActionId: null,
       },
+      challenges: {
+        templates: [],
+        daily: {},
+        config: {
+          maxPerDay: 3,
+          recurringDefault: true,
+          countdownSeconds: 10,
+          onDayChange: "clear-all",
+        },
+      },
     };
   };
   let state = loadState();
@@ -160,6 +170,7 @@
   let editingPresetId = null;
   let pipWindow = null;
   let lastReviewStart = "";
+  let lastChallengeDay = localDate();
   let dashboardGroupMode = "action";
   let dashboardCategoryFilter = "";
   function loadState() {
@@ -193,15 +204,50 @@
         rescheduledFrom: r.rescheduledFrom || null,
         archived: !!r.archived,
       }));
+      const seedDefaults = seed();
       return {
-        ...seed(),
+        ...seedDefaults,
         ...data,
         schemaVersion: SCHEMA_VERSION,
-        lifeMap: data.lifeMap || seed().lifeMap,
-        settings: { ...seed().settings, ...(data.settings || {}) },
-        tracking: { ...seed().tracking, ...(data.tracking || {}) },
-        focus: { ...seed().focus, ...(data.focus || {}) },
+        lifeMap: data.lifeMap || seedDefaults.lifeMap,
+        settings: { ...seedDefaults.settings, ...(data.settings || {}) },
+        tracking: { ...seedDefaults.tracking, ...(data.tracking || {}) },
+        focus: { ...seedDefaults.focus, ...(data.focus || {}) },
         reviews: data.reviews || {},
+        challenges: {
+          templates: Array.isArray(data.challenges?.templates)
+            ? data.challenges.templates
+            : [],
+          daily:
+            data.challenges?.daily && typeof data.challenges.daily === "object"
+              ? data.challenges.daily
+              : {},
+          config: (() => {
+            const raw = data.challenges?.config || {};
+            return {
+              maxPerDay:
+                Number(raw.maxPerDay) >= 1 && Number(raw.maxPerDay) <= 5
+                  ? Number(raw.maxPerDay)
+                  : 3,
+              recurringDefault:
+                raw.recurringDefault === undefined
+                  ? true
+                  : !!raw.recurringDefault,
+              countdownSeconds: [0, 8, 10, 12, 15, 20].includes(
+                Number(raw.countdownSeconds),
+              )
+                ? Number(raw.countdownSeconds)
+                : 10,
+              onDayChange: [
+                "clear-all",
+                "keep-failed",
+                "carry-pending",
+              ].includes(raw.onDayChange)
+                ? raw.onDayChange
+                : "clear-all",
+            };
+          })(),
+        },
       };
     } catch (e) {
       console.warn("Could not load Life OS data", e);
@@ -2367,6 +2413,7 @@
     renderOtherActions(date);
     renderTrackingMini();
     renderFocusMini();
+    renderChallengesHero();
   }
   function renderOtherActions(date) {
     const host = $("otherActions");
@@ -2400,15 +2447,25 @@
     const badge = $("todayNavBadge");
     if (!badge) return;
     const today = localDate();
-    // Count today's sessions that are still pending:
-    //   - scheduled or manually added for today
-    //   - not dismissed (user removed them from the list)
-    //   - not marked done
-    const pending = state.tasks.filter(
+
+    const list = state.challenges?.daily?.[today] || [];
+    const pendingChallenges = list.filter(
+      (c) => c.status === "pending" || c.status === "failed",
+    ).length;
+
+    const pendingSessions = state.tasks.filter(
       (t) => t.date === today && !t.dismissed && t.status !== "done",
     ).length;
-    if (pending > 0) {
-      badge.textContent = String(pending);
+
+    badge.classList.remove("badge-challenge", "badge-session");
+
+    if (pendingChallenges > 0) {
+      badge.textContent = String(pendingChallenges);
+      badge.classList.add("badge-challenge");
+      badge.classList.remove("hidden");
+    } else if (pendingSessions > 0) {
+      badge.textContent = String(pendingSessions);
+      badge.classList.add("badge-session");
       badge.classList.remove("hidden");
     } else {
       badge.textContent = "";
@@ -6403,6 +6460,9 @@
         renderFocus();
       }
     }
+    checkChallengeDayChange();
+    checkChallengesVanish();
+    updateCountdownTexts();
     renderTrackingMini();
     renderFocusMini();
     updateTrackingFab();
@@ -6795,6 +6855,671 @@
       tn.textContent = `${p.name}${phase ? " — " + phase.name : ""}`;
     }
     persist();
+  }
+
+  /* ============================================================
+     TODAY'S DAILY CHALLENGES
+     ============================================================ */
+  function challengeDayKey() {
+    return localDate();
+  }
+
+  function rolloverChallenges() {
+    const cfg = state.challenges.config;
+    const today = challengeDayKey();
+    let dirty = false;
+
+    // Step 1: ensure today's list exists
+    if (!state.challenges.daily[today]) {
+      state.challenges.daily[today] = [];
+      dirty = true;
+    }
+    const todayList = state.challenges.daily[today];
+
+    // Carry over unfinished challenges from yesterday
+    if (cfg.onDayChange === "carry-pending") {
+      const yest = addDays(today, -1);
+      const prev = state.challenges.daily[yest];
+      if (Array.isArray(prev)) {
+        prev.forEach((c) => {
+          if (c.status !== "failed" && c.status !== "pending") return;
+          if (
+            c.templateId &&
+            todayList.some((x) => x.templateId === c.templateId)
+          )
+            return;
+          todayList.push({
+            templateId: c.templateId || null,
+            title: c.title,
+            description: c.description || "",
+            status: "pending",
+            completedAt: null,
+            createdAt: nowISO(),
+          });
+          dirty = true;
+        });
+      }
+    }
+
+    // Add missing recurring templates — respect maxPerDay
+    const slotsLeft = Math.max(0, cfg.maxPerDay - todayList.length);
+    let added = 0;
+    state.challenges.templates.forEach((t) => {
+      if (added >= slotsLeft) return;
+      if (!t.active || !t.recurring) return;
+      if (todayList.some((x) => x.templateId === t.id)) return;
+      todayList.push({
+        templateId: t.id,
+        title: t.title,
+        description: t.description || "",
+        status: "pending",
+        completedAt: null,
+        createdAt: nowISO(),
+      });
+      added++;
+      dirty = true;
+    });
+
+    // Step 2: clean up past dates
+    Object.keys(state.challenges.daily).forEach((date) => {
+      if (date >= today) return;
+      const list = state.challenges.daily[date];
+      if (!Array.isArray(list)) {
+        delete state.challenges.daily[date];
+        dirty = true;
+        return;
+      }
+
+      if (cfg.onDayChange === "clear-all") {
+        delete state.challenges.daily[date];
+        dirty = true;
+      } else if (cfg.onDayChange === "keep-failed") {
+        const kept = list.filter((c) => c.status === "failed");
+        if (kept.length === 0) {
+          delete state.challenges.daily[date];
+        } else {
+          state.challenges.daily[date] = kept;
+        }
+        dirty = true;
+      } else if (cfg.onDayChange === "carry-pending") {
+        delete state.challenges.daily[date];
+        dirty = true;
+      }
+    });
+
+    if (dirty) persist();
+  }
+
+  function challengeCardHtml(c, idx, justCompleted) {
+    const status = c.status || "pending";
+    const doneTime =
+      c.completedAt && status === "done"
+        ? new Date(c.completedAt).toLocaleTimeString("bn-BD", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "";
+    const stampMark = status === "done" ? "✓" : status === "failed" ? "✕" : "◉";
+
+    let vanishAttr = "";
+    let countdownBarHtml = "";
+    let countdownMetaHtml = "";
+    if (status === "done" && c.vanishAt) {
+      const vanishMs = new Date(c.vanishAt).getTime();
+      const remaining = Math.max(0, (vanishMs - Date.now()) / 1000);
+      vanishAttr = ` data-challenge-vanish="${escapeHTML(c.vanishAt)}"`;
+      countdownBarHtml = `<div class="challenge-countdown-bar" style="animation-duration:${remaining}s"></div>`;
+      countdownMetaHtml = ` · <span class="challenge-countdown-text">${Math.ceil(remaining)}s</span>`;
+    } else if (status === "done") {
+      countdownMetaHtml = ` · <span class="challenge-permanent-badge">আজকের জন্য</span>`;
+    }
+
+    return `
+      <div class="challenge-card ${justCompleted ? "just-completed" : ""}"
+           data-status="${status}" data-challenge-idx="${idx}"${vanishAttr}>
+        <div class="challenge-stamp" aria-hidden="true">
+          <span class="challenge-stamp-mark">${stampMark}</span>
+        </div>
+        <div class="challenge-body">
+          <div class="challenge-title">${escapeHTML(c.title)}</div>
+          ${c.description ? `<div class="challenge-desc">${escapeHTML(c.description)}</div>` : ""}
+          ${status === "done" && doneTime ? `<div class="challenge-meta">✓ সম্পন্ন · ${escapeHTML(doneTime)}${countdownMetaHtml}</div>` : ""}
+          ${status === "failed" ? `<div class="challenge-meta">আজ সম্পন্ন হয়নি</div>` : ""}
+        </div>
+        <div class="challenge-actions">
+          ${
+            status === "pending" || status === "failed"
+              ? `<button type="button" class="challenge-complete-btn" data-challenge-complete="${idx}">✓ Complete</button>`
+              : ""
+          }
+          ${
+            status === "done"
+              ? `<button type="button" class="challenge-undo-btn" data-challenge-undo="${idx}" title="Undo" aria-label="Undo">↺</button>`
+              : ""
+          }
+          <details class="more-menu challenge-more">
+            <summary class="challenge-menu-btn" aria-label="Options">⋯</summary>
+            <div class="more-menu-pop">
+              <button type="button" class="small" data-challenge-remove="${idx}">আজকের তালিকা থেকে সরাও</button>
+              ${c.templateId ? `<button type="button" class="small danger" data-challenge-delete-template="${escapeHTML(c.templateId)}">চিরতরে মুছে ফেলো</button>` : ""}
+            </div>
+          </details>
+        </div>
+        ${countdownBarHtml}
+      </div>
+    `;
+  }
+
+  function renderChallengesHero(opts = {}) {
+    rolloverChallenges();
+    const host = $("challengesList");
+    if (!host) return;
+
+    const date = challengeDayKey();
+    const rawList = state.challenges.daily[date] || [];
+
+    const list = rawList.filter((c) => !c.vanished);
+
+    const subtitle = $("challengesSubtitle");
+    if (subtitle) {
+      const doneCount = rawList.filter((x) => x.status === "done").length;
+      const total = rawList.length;
+      if (total === 0) {
+        subtitle.textContent = "এখনো কোনো চ্যালেঞ্জ নেই — উপরে + Add চাপো";
+      } else if (list.length === 0 && doneCount === total) {
+        subtitle.textContent = `🎉 আজকের সব চ্যালেঞ্জ সম্পন্ন — অসাধারণ দিন!`;
+      } else if (doneCount === 0) {
+        subtitle.textContent = `${total}টি চ্যালেঞ্জ অপেক্ষা করছে`;
+      } else {
+        subtitle.textContent = `${doneCount} / ${total} সম্পন্ন`;
+      }
+    }
+
+    if (!list.length) {
+      if (rawList.length > 0) {
+        host.innerHTML = `<div class="challenge-empty">🎉 আজকের সব চ্যালেঞ্জ সম্পন্ন — কাল আবার শুরু হবে!</div>`;
+      } else {
+        host.innerHTML = `<div class="challenge-empty">আজকের জন্য কোনো চ্যালেঞ্জ নেই — উপরে <strong>+ Add</strong> চাপো</div>`;
+      }
+      return;
+    }
+
+    host.innerHTML = list
+      .map((c) => {
+        const realIdx = rawList.indexOf(c);
+        return challengeCardHtml(c, realIdx, opts.justCompletedIdx === realIdx);
+      })
+      .join("");
+  }
+
+  function completeChallenge(idx) {
+    const date = challengeDayKey();
+    const list = state.challenges.daily[date];
+    if (!list || !list[idx]) return;
+    const c = list[idx];
+
+    if (c.status === "done") {
+      c.status = "pending";
+      c.completedAt = null;
+      c.vanishAt = null;
+      persist();
+      renderChallengesHero();
+      updateTodayNavBadge();
+      return;
+    }
+
+    const raw = Number(state.challenges.config.countdownSeconds);
+    const countdownSec = Number.isFinite(raw) && raw >= 0 ? raw : 10;
+    c.status = "done";
+    c.completedAt = nowISO();
+    c.vanishAt =
+      countdownSec > 0
+        ? new Date(Date.now() + countdownSec * 1000).toISOString()
+        : null;
+    persist();
+    playChallengeChime();
+
+    const allDone = list.every(
+      (x) => x.status === "done" || x.status === "failed",
+    );
+    renderChallengesHero({ justCompletedIdx: idx });
+    updateTodayNavBadge();
+
+    if (allDone) {
+      setTimeout(() => {
+        notify("🎉 আজকের সব চ্যালেঞ্জ সম্পন্ন — অসাধারণ!");
+      }, 500);
+    }
+  }
+
+  function playChallengeChime() {
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return;
+      const c = new C();
+      const t0 = c.currentTime;
+      const notes = [
+        { f: 523.25, t: 0.0, d: 0.15 },
+        { f: 659.25, t: 0.1, d: 0.15 },
+        { f: 783.99, t: 0.2, d: 0.4 },
+      ];
+      notes.forEach((n) => {
+        const o = c.createOscillator();
+        const g = c.createGain();
+        o.type = "sine";
+        o.frequency.value = n.f;
+        o.connect(g);
+        g.connect(c.destination);
+        g.gain.setValueAtTime(0.0001, t0 + n.t);
+        g.gain.exponentialRampToValueAtTime(0.16, t0 + n.t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + n.t + n.d);
+        o.start(t0 + n.t);
+        o.stop(t0 + n.t + n.d + 0.05);
+      });
+      setTimeout(() => {
+        try {
+          c.close();
+        } catch (e) {}
+      }, 1400);
+    } catch (e) {}
+  }
+
+  function openChallengeModal(editTemplateId) {
+    const editId = editTemplateId || "";
+    const today = challengeDayKey();
+    $("challengeEditId").value = editId;
+    $("challengeModalTitle").textContent = editId
+      ? "চ্যালেঞ্জ এডিট"
+      : "নতুন চ্যালেঞ্জ";
+    const dateInput = $("challengeDate");
+    if (dateInput) {
+      dateInput.value = today;
+      dateInput.min = today;
+    }
+    if (editId) {
+      const t = state.challenges.templates.find((x) => x.id === editId);
+      if (t) {
+        $("challengeTitle").value = t.title;
+        $("challengeDescription").value = t.description || "";
+        $("challengeRecurring").checked = !!t.recurring;
+      }
+    } else {
+      $("challengeTitle").value = "";
+      $("challengeDescription").value = "";
+      $("challengeRecurring").checked =
+        !!state.challenges.config.recurringDefault;
+    }
+    if (typeof refreshDateButtons === "function") refreshDateButtons();
+    $("challengeModal").classList.remove("hidden");
+    setTimeout(() => $("challengeTitle").focus(), 60);
+  }
+
+  function closeChallengeModal() {
+    $("challengeModal").classList.add("hidden");
+    $("challengeEditId").value = "";
+  }
+
+  function saveChallengeFromModal() {
+    const editId = $("challengeEditId").value;
+    const title = $("challengeTitle").value.trim();
+    const description = $("challengeDescription").value.trim();
+    const today = challengeDayKey();
+    const targetDate = $("challengeDate")?.value || today;
+    const isToday = targetDate === today;
+    const recurring = isToday && $("challengeRecurring").checked;
+
+    if (!title) {
+      notify("চ্যালেঞ্জের নাম দাও।");
+      $("challengeTitle").focus();
+      return;
+    }
+    if (targetDate < today) {
+      notify("আগের তারিখে চ্যালেঞ্জ যোগ করা যায় না।");
+      return;
+    }
+
+    const list = state.challenges.daily[targetDate] || [];
+
+    if (editId && isToday) {
+      const t = state.challenges.templates.find((x) => x.id === editId);
+      if (t) {
+        t.title = title;
+        t.description = description;
+        t.recurring = recurring;
+      }
+      list.forEach((c) => {
+        if (c.templateId === editId && c.status === "pending") {
+          c.title = title;
+          c.description = description;
+        }
+      });
+      state.challenges.daily[targetDate] = list;
+      persist();
+      closeChallengeModal();
+      renderChallengesHero();
+      notify("চ্যালেঞ্জ আপডেট হয়েছে।");
+      return;
+    }
+
+    const cfg = state.challenges.config;
+    if (list.length >= cfg.maxPerDay) {
+      notify(
+        `দিনে সর্বোচ্চ ${cfg.maxPerDay}টি চ্যালেঞ্জ যোগ করা যাবে — Rules-এ বদলাও।`,
+      );
+      return;
+    }
+
+    let templateId = null;
+    if (recurring) {
+      const template = {
+        id: uid("ch"),
+        title,
+        description,
+        recurring: true,
+        active: true,
+        createdAt: nowISO(),
+      };
+      state.challenges.templates.push(template);
+      templateId = template.id;
+    }
+
+    list.push({
+      templateId,
+      title,
+      description,
+      status: "pending",
+      completedAt: null,
+      createdAt: nowISO(),
+    });
+    state.challenges.daily[targetDate] = list;
+    persist();
+    closeChallengeModal();
+
+    if (isToday) {
+      renderChallengesHero();
+      notify("নতুন চ্যালেঞ্জ যোগ হয়েছে।");
+    } else {
+      const nice = new Date(targetDate + "T12:00:00").toLocaleDateString(
+        "bn-BD",
+        { day: "numeric", month: "long" },
+      );
+      notify(`${nice}-এর জন্য সেভ হয়েছে — Upcoming-এ দেখবে।`);
+    }
+  }
+
+  function removeChallengeToday(idx) {
+    const date = getSelectedDate();
+    const list = state.challenges.daily[date];
+    if (!list || !list[idx]) return;
+    list.splice(idx, 1);
+    persist();
+    renderChallengesHero();
+    notify("আজকের তালিকা থেকে সরানো হয়েছে।");
+  }
+
+  function deleteChallengeTemplate(templateId) {
+    if (!templateId) return;
+    if (!confirm("এই চ্যালেঞ্জ চিরতরে মুছে ফেলবে?")) return;
+    const t = state.challenges.templates.find((x) => x.id === templateId);
+    if (t) t.active = false;
+    const date = getSelectedDate();
+    const list = state.challenges.daily[date];
+    if (Array.isArray(list)) {
+      state.challenges.daily[date] = list.filter(
+        (c) => c.templateId !== templateId,
+      );
+    }
+    persist();
+    renderChallengesHero();
+    notify("চ্যালেঞ্জ মুছে ফেলা হয়েছে।");
+  }
+
+  function openChallengeRules() {
+    const cfg = state.challenges.config;
+    $("challengeRuleMax").value = String(cfg.maxPerDay || 3);
+    $("challengeRuleDayChange").value = cfg.onDayChange || "clear-all";
+    $("challengeRuleCountdown").value = String(cfg.countdownSeconds || 10);
+    $("challengeRuleRecurring").checked = !!cfg.recurringDefault;
+    $("challengeRulesModal").classList.remove("hidden");
+  }
+
+  function closeChallengeRules() {
+    $("challengeRulesModal").classList.add("hidden");
+  }
+
+  function saveChallengeRules() {
+    state.challenges.config.maxPerDay = Math.max(
+      1,
+      Math.min(5, Number($("challengeRuleMax").value) || 3),
+    );
+    state.challenges.config.onDayChange =
+      $("challengeRuleDayChange").value || "clear-all";
+    const rawCountdown = Number($("challengeRuleCountdown").value);
+    state.challenges.config.countdownSeconds = [0, 8, 10, 12, 15, 20].includes(
+      rawCountdown,
+    )
+      ? rawCountdown
+      : 10;
+    state.challenges.config.recurringDefault = !!$("challengeRuleRecurring")
+      .checked;
+    persist();
+    closeChallengeRules();
+    renderChallengesHero();
+    notify("Rules সেভ হয়েছে।");
+  }
+
+  function bindChallengeEvents() {
+    $("challengeAddBtn")?.addEventListener("click", () => openChallengeModal());
+    $("challengesRulesBtn")?.addEventListener("click", openChallengeRules);
+
+    $("challengeModalCancel")?.addEventListener("click", closeChallengeModal);
+    $("challengeModal")?.addEventListener("click", (e) => {
+      if (e.target === $("challengeModal")) closeChallengeModal();
+    });
+    $("challengeModalSave")?.addEventListener("click", saveChallengeFromModal);
+
+    $("challengeRulesCancel")?.addEventListener("click", closeChallengeRules);
+    $("challengeRulesModal")?.addEventListener("click", (e) => {
+      if (e.target === $("challengeRulesModal")) closeChallengeRules();
+    });
+    $("challengeRulesSave")?.addEventListener("click", saveChallengeRules);
+
+    $("challengesList")?.addEventListener("click", (e) => {
+      const completeBtn = e.target.closest("[data-challenge-complete]");
+      if (completeBtn) {
+        completeChallenge(Number(completeBtn.dataset.challengeComplete));
+        return;
+      }
+      const undoBtn = e.target.closest("[data-challenge-undo]");
+      if (undoBtn) {
+        completeChallenge(Number(undoBtn.dataset.challengeUndo));
+        return;
+      }
+      const removeBtn = e.target.closest("[data-challenge-remove]");
+      if (removeBtn) {
+        removeBtn.closest("details")?.removeAttribute("open");
+        removeChallengeToday(Number(removeBtn.dataset.challengeRemove));
+        return;
+      }
+      const delBtn = e.target.closest("[data-challenge-delete-template]");
+      if (delBtn) {
+        delBtn.closest("details")?.removeAttribute("open");
+        deleteChallengeTemplate(delBtn.dataset.challengeDeleteTemplate);
+        return;
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".challenge-more")) {
+        document
+          .querySelectorAll("details.challenge-more[open]")
+          .forEach((d) => d.removeAttribute("open"));
+      }
+    });
+  }
+
+  function checkChallengeDayChange() {
+    const today = challengeDayKey();
+    if (lastChallengeDay === today) return;
+    lastChallengeDay = today;
+
+    rolloverChallenges();
+
+    const dashPage = document.getElementById("page-dashboard");
+    if (dashPage && dashPage.classList.contains("active")) {
+      renderChallengesHero();
+    }
+    updateTodayNavBadge();
+    if (typeof renderTodayReminders === "function") {
+      renderTodayReminders();
+    }
+  }
+
+  function checkChallengesVanish() {
+    const today = challengeDayKey();
+    const list = state.challenges.daily[today];
+    if (!Array.isArray(list)) return;
+    const now = Date.now();
+    let newlyVanished = false;
+    list.forEach((c) => {
+      if (
+        c.status === "done" &&
+        c.vanishAt &&
+        !c.vanished &&
+        now >= new Date(c.vanishAt).getTime()
+      ) {
+        c.vanished = true;
+        newlyVanished = true;
+      }
+    });
+    if (newlyVanished) {
+      persist();
+      const dashPage = document.getElementById("page-dashboard");
+      if (dashPage && dashPage.classList.contains("active")) {
+        renderChallengesHero();
+      }
+      updateTodayNavBadge();
+    }
+  }
+
+  function updateCountdownTexts() {
+    document.querySelectorAll("[data-challenge-vanish]").forEach((el) => {
+      const vanishAt = new Date(el.dataset.challengeVanish).getTime();
+      const remaining = Math.max(0, Math.ceil((vanishAt - Date.now()) / 1000));
+      const txt = el.querySelector(".challenge-countdown-text");
+      if (txt) txt.textContent = `${remaining}s`;
+    });
+  }
+
+  /* ---------- UPCOMING CHALLENGES MODAL ---------- */
+  function computeUpcomingDates() {
+    const today = challengeDayKey();
+    const dates = [];
+    for (let i = 1; i <= 7; i++) {
+      const d = addDays(today, i);
+      dates.push({ date: d, list: state.challenges.daily[d] || [] });
+    }
+    return dates;
+  }
+
+  function openUpcomingModal() {
+    renderUpcomingModal();
+    $("upcomingModal")?.classList.remove("hidden");
+  }
+
+  function closeUpcomingModal() {
+    $("upcomingModal")?.classList.add("hidden");
+  }
+
+  function renderUpcomingModal() {
+    const host = $("upcomingList");
+    if (!host) return;
+    const today = challengeDayKey();
+    const futureDates = Object.keys(state.challenges.daily)
+      .filter((d) => d > today)
+      .sort();
+
+    if (!futureDates.length) {
+      host.innerHTML = `<div class="upcoming-empty">কোনো ভবিষ্যতের চ্যালেঞ্জ নেই — উপরে <strong>+ Add</strong> চেপে তারিখ বেছে নাও।</div>`;
+      return;
+    }
+
+    host.innerHTML = futureDates
+      .map((date) => {
+        const list = state.challenges.daily[date] || [];
+        if (!list.length) return "";
+        const dateLabel = new Date(date + "T12:00:00").toLocaleDateString(
+          "bn-BD",
+          { weekday: "short", day: "numeric", month: "short" },
+        );
+        const items = list
+          .map(
+            (c, idx) => `
+            <div class="upcoming-item">
+              <span>${escapeHTML(c.title)}</span>
+              <button type="button" class="small danger" data-upcoming-del="${escapeHTML(date)}" data-upcoming-idx="${idx}" aria-label="Remove">✕</button>
+            </div>
+          `,
+          )
+          .join("");
+        return `
+          <div class="upcoming-section">
+            <div class="upcoming-date-head">
+              <strong>${escapeHTML(dateLabel)}</strong>
+            </div>
+            <div class="upcoming-items">${items}</div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  function addUpcomingChallenge(date) {
+    const title = prompt("চ্যালেঞ্জের নাম:");
+    if (!title || !title.trim()) return;
+    if (!state.challenges.daily[date]) state.challenges.daily[date] = [];
+    state.challenges.daily[date].push({
+      templateId: null,
+      title: title.trim(),
+      description: "",
+      status: "pending",
+      completedAt: null,
+      createdAt: nowISO(),
+    });
+    persist();
+    renderUpcomingModal();
+    const nice = new Date(date + "T12:00:00").toLocaleDateString("bn-BD", {
+      day: "numeric",
+      month: "long",
+    });
+    notify(`${nice}-এর জন্য যোগ হয়েছে।`);
+  }
+
+  function deleteUpcomingChallenge(date, idx) {
+    if (!state.challenges.daily[date]) return;
+    state.challenges.daily[date].splice(idx, 1);
+    if (state.challenges.daily[date].length === 0) {
+      delete state.challenges.daily[date];
+    }
+    persist();
+    renderUpcomingModal();
+  }
+
+  function bindUpcomingModal() {
+    $("challengesUpcomingBtn")?.addEventListener("click", openUpcomingModal);
+    $("upcomingModalClose")?.addEventListener("click", closeUpcomingModal);
+    $("upcomingModal")?.addEventListener("click", (e) => {
+      if (e.target === $("upcomingModal")) closeUpcomingModal();
+    });
+    $("upcomingList")?.addEventListener("click", (e) => {
+      const delBtn = e.target.closest("[data-upcoming-del]");
+      if (delBtn) {
+        deleteUpcomingChallenge(
+          delBtn.dataset.upcomingDel,
+          Number(delBtn.dataset.upcomingIdx),
+        );
+      }
+    });
   }
 
   /* ============================================================
@@ -7384,6 +8109,9 @@
     bindReminderRescheduleCalendar();
     bindDatePicker();
     upgradeDateInputs();
+    bindChallengeEvents();
+    bindUpcomingModal();
+    lastChallengeDay = challengeDayKey();
     lifeMapRelocatePopups();
     syncThemeButton();
     resetPresetForm();

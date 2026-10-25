@@ -428,6 +428,46 @@
         <main>
           <!-- ============ DASHBOARD ============ -->
           <section id="page-dashboard" class="page active">
+            <div id="challengesHero" class="challenges-hero">
+              <div class="challenges-hero-head">
+                <div class="challenges-hero-title">
+                  <span class="challenges-icon" aria-hidden="true">🎯</span>
+                  <div>
+                    <h2>আজকের চ্যালেঞ্জ</h2>
+                    <p
+                      class="muted tiny"
+                      id="challengesSubtitle"
+                      style="margin: 2px 0 0"
+                    >
+                      —
+                    </p>
+                  </div>
+                </div>
+                <div class="challenges-hero-actions">
+                  <button
+                    type="button"
+                    class="challenges-upcoming-btn"
+                    id="challengesUpcomingBtn"
+                    title="Upcoming challenges"
+                  >
+                    📅 Upcoming
+                  </button>
+                  <button
+                    type="button"
+                    class="challenges-rules-btn"
+                    id="challengesRulesBtn"
+                    title="Rules"
+                    aria-label="Challenge Rules"
+                  >
+                    ⚙️
+                  </button>
+                  <button type="button" class="primary" id="challengeAddBtn">
+                    + Add
+                  </button>
+                </div>
+              </div>
+              <div id="challengesList" class="challenges-list"></div>
+            </div>
             <div class="dash-shell">
               <article class="card dash-main">
                 <div class="dash-toolbar">
@@ -549,6 +589,154 @@
               </select>
             </div>
           </section>
+
+          <!-- ===================== CHALLENGE MODAL ===================== -->
+          <div id="challengeModal" class="modal-overlay hidden">
+            <div
+              class="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="challengeModalTitle"
+            >
+              <h2 id="challengeModalTitle">নতুন চ্যালেঞ্জ</h2>
+              <div class="stack">
+                <input type="hidden" id="challengeEditId" />
+                <div class="field">
+                  <label for="challengeTitle">চ্যালেঞ্জ</label>
+                  <input
+                    id="challengeTitle"
+                    placeholder="যেমন: মেডিটেশন করো"
+                    maxlength="120"
+                    required
+                  />
+                </div>
+                <div class="field">
+                  <label for="challengeDescription">বর্ণনা (ঐচ্ছিক)</label>
+                  <input
+                    id="challengeDescription"
+                    placeholder="১৫ মিনিট শান্ত মনে"
+                    maxlength="200"
+                  />
+                </div>
+                <div class="field">
+                  <label for="challengeDate">তারিখ</label>
+                  <input type="date" id="challengeDate" />
+                  <p class="tiny" style="margin: 2px 0 0">
+                    আজ বা ভবিষ্যতের তারিখ। ভবিষ্যতের হলে শুধু Upcoming-এ দেখা
+                    যাবে।
+                  </p>
+                </div>
+                <label class="checkboxrow" style="margin-top: 4px">
+                  <input type="checkbox" id="challengeRecurring" />
+                  <span
+                    >প্রতিদিন স্বয়ংক্রিয়ভাবে যোগ হবে
+                    <span class="muted tiny">(শুধু আজকের জন্য)</span></span
+                  >
+                </label>
+              </div>
+              <div
+                class="row"
+                style="justify-content: flex-end; margin-top: 18px"
+              >
+                <button type="button" id="challengeModalCancel">Cancel</button>
+                <button type="button" class="primary" id="challengeModalSave">
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===================== CHALLENGE RULES MODAL ===================== -->
+          <div id="challengeRulesModal" class="modal-overlay hidden">
+            <div
+              class="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="challengeRulesTitle"
+            >
+              <h2 id="challengeRulesTitle">🎯 Challenge Rules</h2>
+              <div class="stack">
+                <div class="field">
+                  <label for="challengeRuleMax"
+                    >দিনে সর্বোচ্চ কতগুলো চ্যালেঞ্জ</label
+                  >
+                  <select id="challengeRuleMax">
+                    <option value="1">১টি</option>
+                    <option value="2">২টি</option>
+                    <option value="3">৩টি</option>
+                    <option value="4">৪টি</option>
+                    <option value="5">৫টি</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="challengeRuleCountdown"
+                    >Complete করার পর কতক্ষণ কার্ড দেখাবে</label
+                  >
+                  <select id="challengeRuleCountdown">
+                    <option value="8">৮ সেকেন্ড</option>
+                    <option value="10">১০ সেকেন্ড</option>
+                    <option value="12">১২ সেকেন্ড</option>
+                    <option value="15">১৫ সেকেন্ড</option>
+                    <option value="20">২০ সেকেন্ড</option>
+                    <option value="0">
+                      আজকের জন্য থেকে যাবে (কাল চলে যাবে)
+                    </option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="challengeRuleDayChange">নতুন দিনে কী হবে</label>
+                  <select id="challengeRuleDayChange">
+                    <option value="clear-all">সব সাফ (পুরো ফ্রেশ শুরু)</option>
+                    <option value="keep-failed">
+                      শুধু incomplete "failed" হয়ে থাকবে
+                    </option>
+                    <option value="carry-pending">
+                      Incomplete আজকের তালিকায় carry হবে
+                    </option>
+                  </select>
+                </div>
+                <label class="checkboxrow" style="margin-top: 4px">
+                  <input type="checkbox" id="challengeRuleRecurring" />
+                  <span>নতুন চ্যালেঞ্জ ডিফল্টে Recurring হবে</span>
+                </label>
+              </div>
+              <div
+                class="row"
+                style="justify-content: flex-end; margin-top: 18px"
+              >
+                <button type="button" id="challengeRulesCancel">Cancel</button>
+                <button type="button" class="primary" id="challengeRulesSave">
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===================== UPCOMING CHALLENGES MODAL ===================== -->
+          <div id="upcomingModal" class="modal-overlay hidden">
+            <div
+              class="modal upcoming-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="upcomingModalTitle"
+            >
+              <div class="upcoming-modal-head">
+                <h2 id="upcomingModalTitle">📅 Upcoming Challenges</h2>
+                <button
+                  type="button"
+                  id="upcomingModalClose"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <p class="muted tiny" style="margin: -8px 0 14px">
+                আগামী ৭ দিনের জন্য চ্যালেঞ্জ সেট করো। এগুলো আজকের স্ক্রিনে
+                দেখাবে না।
+              </p>
+              <div id="upcomingList" class="upcoming-list"></div>
+            </div>
+          </div>
 
           <!-- ============ ACTIONS ============ -->
           <section id="page-actions" class="page">
