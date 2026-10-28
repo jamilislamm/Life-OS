@@ -448,9 +448,9 @@
                     type="button"
                     class="challenges-upcoming-btn"
                     id="challengesUpcomingBtn"
-                    title="Upcoming challenges"
+                    title="চ্যালেঞ্জ হাব"
                   >
-                    📅 Upcoming
+                    🎯 চ্যালেঞ্জ হাব
                   </button>
                   <button
                     type="button"
@@ -667,6 +667,14 @@
               <h2 id="challengeModalTitle">নতুন চ্যালেঞ্জ</h2>
               <div class="stack">
                 <input type="hidden" id="challengeEditId" />
+                <div class="field" id="challengeTemplateField">
+                  <label for="challengeTemplatePicker"
+                    >টেমপ্লেট থেকে নাও (ঐচ্ছিক)</label
+                  >
+                  <select id="challengeTemplatePicker">
+                    <option value="">— টেমপ্লেট বেছে নাও —</option>
+                  </select>
+                </div>
                 <div class="field">
                   <label for="challengeTitle">চ্যালেঞ্জ</label>
                   <input
@@ -684,20 +692,21 @@
                     maxlength="200"
                   />
                 </div>
-                <div class="field">
+                <div class="field" id="challengeDateField">
                   <label for="challengeDate">তারিখ</label>
                   <input type="date" id="challengeDate" />
                   <p class="tiny" style="margin: 2px 0 0">
-                    আজ বা ভবিষ্যতের তারিখ। ভবিষ্যতের হলে শুধু Upcoming-এ দেখা
+                    আজ বা ভবিষ্যতের তারিখ। ভবিষ্যতের হলে চ্যালেঞ্জ হাব-এ দেখা
                     যাবে।
                   </p>
                 </div>
-                <label class="checkboxrow" style="margin-top: 4px">
-                  <input type="checkbox" id="challengeRecurring" />
-                  <span
-                    >প্রতিদিন স্বয়ংক্রিয়ভাবে যোগ হবে
-                    <span class="muted tiny">(শুধু আজকের জন্য)</span></span
-                  >
+                <label
+                  class="checkboxrow"
+                  style="margin-top: 4px"
+                  id="challengeSaveAsTemplateRow"
+                >
+                  <input type="checkbox" id="challengeSaveAsTemplate" />
+                  <span>এই চ্যালেঞ্জটি টেমপ্লেট হিসেবেও সেভ করো</span>
                 </label>
               </div>
               <div
@@ -761,10 +770,6 @@
                     </option>
                   </select>
                 </div>
-                <label class="checkboxrow" style="margin-top: 4px">
-                  <input type="checkbox" id="challengeRuleRecurring" />
-                  <span>নতুন চ্যালেঞ্জ ডিফল্টে Recurring হবে</span>
-                </label>
               </div>
               <div
                 class="row"
@@ -787,7 +792,7 @@
               aria-labelledby="upcomingModalTitle"
             >
               <div class="upcoming-modal-head">
-                <h2 id="upcomingModalTitle">📅 Upcoming Challenges</h2>
+                <h2 id="upcomingModalTitle">🎯 চ্যালেঞ্জ হাব</h2>
                 <button
                   type="button"
                   id="upcomingModalClose"
@@ -797,10 +802,69 @@
                 </button>
               </div>
               <p class="muted tiny" style="margin: -8px 0 14px">
-                আগামী ৭ দিনের জন্য চ্যালেঞ্জ সেট করো। এগুলো আজকের স্ক্রিনে
-                দেখাবে না।
+                আগামী দিনগুলোর চ্যালেঞ্জ ও পুনরায় ব্যবহারযোগ্য টেমপ্লেট এক
+                জায়গায়।
               </p>
-              <div id="upcomingList" class="upcoming-list"></div>
+
+              <div class="hub-section">
+                <div class="hub-section-head">
+                  <strong>📅 আগামী দিনগুলো</strong>
+                </div>
+                <div id="upcomingList" class="upcoming-list"></div>
+              </div>
+
+              <div class="hub-section">
+                <div class="hub-section-head">
+                  <strong>📚 টেমপ্লেট</strong>
+                  <button
+                    type="button"
+                    class="small primary"
+                    id="hubNewTemplateBtn"
+                  >
+                    + নতুন টেমপ্লেট
+                  </button>
+                </div>
+                <div id="hubTemplateList" class="hub-template-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="templateEditModal" class="modal-overlay hidden">
+            <div
+              class="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="templateEditTitle"
+            >
+              <h2 id="templateEditTitle">নতুন টেমপ্লেট</h2>
+              <div class="stack">
+                <input type="hidden" id="templateEditId" />
+                <div class="field">
+                  <label for="templateTitle">টেমপ্লেট নাম</label>
+                  <input
+                    id="templateTitle"
+                    placeholder="যেমন: মেডিটেশন করো"
+                    maxlength="120"
+                  />
+                </div>
+                <div class="field">
+                  <label for="templateDescription">বর্ণনা (ঐচ্ছিক)</label>
+                  <input
+                    id="templateDescription"
+                    placeholder="১৫ মিনিট শান্ত মনে"
+                    maxlength="200"
+                  />
+                </div>
+              </div>
+              <div
+                class="row"
+                style="justify-content: flex-end; margin-top: 18px"
+              >
+                <button type="button" id="templateEditCancel">Cancel</button>
+                <button type="button" class="primary" id="templateEditSave">
+                  Save
+                </button>
+              </div>
             </div>
           </div>
 

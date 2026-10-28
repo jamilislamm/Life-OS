@@ -155,7 +155,6 @@
         daily: {},
         config: {
           maxPerDay: 3,
-          recurringDefault: true,
           countdownSeconds: 10,
           onDayChange: "clear-all",
         },
@@ -218,7 +217,13 @@
         reviews: data.reviews || {},
         challenges: {
           templates: Array.isArray(data.challenges?.templates)
-            ? data.challenges.templates
+            ? data.challenges.templates.map((t) => ({
+                id: String(t.id || uid("ch")),
+                title: String(t.title || ""),
+                description: String(t.description || ""),
+                active: t.active !== false,
+                createdAt: t.createdAt || nowISO(),
+              }))
             : [],
           daily:
             data.challenges?.daily && typeof data.challenges.daily === "object"
@@ -231,10 +236,6 @@
                 Number(raw.maxPerDay) >= 1 && Number(raw.maxPerDay) <= 5
                   ? Number(raw.maxPerDay)
                   : 3,
-              recurringDefault:
-                raw.recurringDefault === undefined
-                  ? true
-                  : !!raw.recurringDefault,
               countdownSeconds: [0, 8, 10, 12, 15, 20].includes(
                 Number(raw.countdownSeconds),
               )
@@ -6920,25 +6921,6 @@
       }
     }
 
-    // Add missing recurring templates — respect maxPerDay
-    const slotsLeft = Math.max(0, cfg.maxPerDay - todayList.length);
-    let added = 0;
-    state.challenges.templates.forEach((t) => {
-      if (added >= slotsLeft) return;
-      if (!t.active || !t.recurring) return;
-      if (todayList.some((x) => x.templateId === t.id)) return;
-      todayList.push({
-        templateId: t.id,
-        title: t.title,
-        description: t.description || "",
-        status: "pending",
-        completedAt: null,
-        createdAt: nowISO(),
-      });
-      added++;
-      dirty = true;
-    });
-
     // Step 2: clean up past dates
     Object.keys(state.challenges.daily).forEach((date) => {
       if (date >= today) return;
@@ -7016,13 +6998,8 @@
               ? `<button type="button" class="challenge-undo-btn" data-challenge-undo="${idx}" title="Undo" aria-label="Undo">↺</button>`
               : ""
           }
-          <details class="more-menu challenge-more">
-            <summary class="challenge-menu-btn" aria-label="Options">⋯</summary>
-            <div class="more-menu-pop">
-              <button type="button" class="small" data-challenge-remove="${idx}">আজকের তালিকা থেকে সরাও</button>
-              ${c.templateId ? `<button type="button" class="small danger" data-challenge-delete-template="${escapeHTML(c.templateId)}">চিরতরে মুছে ফেলো</button>` : ""}
-            </div>
-          </details>
+          <button type="button" class="challenge-icon-btn" data-challenge-edit="${idx}" title="Edit" aria-label="Edit">✎</button>
+          <button type="button" class="challenge-icon-btn danger" data-challenge-delete="${idx}" title="Delete" aria-label="Delete">🗑</button>
         </div>
         ${countdownBarHtml}
       </div>
@@ -7143,31 +7120,85 @@
     } catch (e) {}
   }
 
-  function openChallengeModal(editTemplateId) {
-    const editId = editTemplateId || "";
+  let challengeEditIdx = null;
+  let challengeEditDate = "";
+
+  function populateChallengeTemplatePicker(selectedId) {
+    const picker = $("challengeTemplatePicker");
+    if (!picker) return;
+    picker.innerHTML = '<option value="">— টেমপ্লেট বেছে নাও —</option>';
+    state.challenges.templates
+      .filter((t) => t.active !== false)
+      .forEach((t) => {
+        const o = document.createElement("option");
+        o.value = t.id;
+        o.textContent = t.title;
+        picker.appendChild(o);
+      });
+    picker.value = selectedId || "";
+  }
+
+  function openChallengeModal(opts = {}) {
+    challengeEditIdx = null;
+    challengeEditDate = "";
     const today = challengeDayKey();
-    $("challengeEditId").value = editId;
-    $("challengeModalTitle").textContent = editId
-      ? "চ্যালেঞ্জ এডিট"
-      : "নতুন চ্যালেঞ্জ";
+    $("challengeEditId").value = "";
+    $("challengeTitle").value = "";
+    $("challengeDescription").value = "";
+    $("challengeSaveAsTemplate").checked = false;
+
+    populateChallengeTemplatePicker(opts.fromTemplateId || "");
+
+    if (opts.fromTemplateId) {
+      const t = state.challenges.templates.find(
+        (x) => x.id === opts.fromTemplateId,
+      );
+      if (t) {
+        $("challengeTitle").value = t.title;
+        $("challengeDescription").value = t.description || "";
+      }
+    }
+
     const dateInput = $("challengeDate");
     if (dateInput) {
       dateInput.value = today;
       dateInput.min = today;
     }
-    if (editId) {
-      const t = state.challenges.templates.find((x) => x.id === editId);
-      if (t) {
-        $("challengeTitle").value = t.title;
-        $("challengeDescription").value = t.description || "";
-        $("challengeRecurring").checked = !!t.recurring;
-      }
-    } else {
-      $("challengeTitle").value = "";
-      $("challengeDescription").value = "";
-      $("challengeRecurring").checked =
-        !!state.challenges.config.recurringDefault;
+
+    $("challengeTemplateField")?.classList.remove("hidden");
+    $("challengeSaveAsTemplateRow")?.classList.remove("hidden");
+    $("challengeDateField")?.classList.remove("hidden");
+
+    $("challengeModalTitle").textContent = "নতুন চ্যালেঞ্জ";
+    if (typeof refreshDateButtons === "function") refreshDateButtons();
+    $("challengeModal").classList.remove("hidden");
+    setTimeout(() => $("challengeTitle").focus(), 60);
+  }
+
+  function openChallengeEditModal(idx) {
+    const today = challengeDayKey();
+    const list = state.challenges.daily[today] || [];
+    const c = list[idx];
+    if (!c) return;
+
+    challengeEditIdx = idx;
+    challengeEditDate = today;
+    $("challengeEditId").value = "";
+    $("challengeTitle").value = c.title;
+    $("challengeDescription").value = c.description || "";
+    $("challengeSaveAsTemplate").checked = false;
+
+    const dateInput = $("challengeDate");
+    if (dateInput) {
+      dateInput.value = today;
+      dateInput.min = today;
     }
+
+    $("challengeTemplateField")?.classList.add("hidden");
+    $("challengeSaveAsTemplateRow")?.classList.add("hidden");
+    $("challengeDateField")?.classList.add("hidden");
+
+    $("challengeModalTitle").textContent = "চ্যালেঞ্জ এডিট";
     if (typeof refreshDateButtons === "function") refreshDateButtons();
     $("challengeModal").classList.remove("hidden");
     setTimeout(() => $("challengeTitle").focus(), 60);
@@ -7176,50 +7207,45 @@
   function closeChallengeModal() {
     $("challengeModal").classList.add("hidden");
     $("challengeEditId").value = "";
+    challengeEditIdx = null;
+    challengeEditDate = "";
   }
 
   function saveChallengeFromModal() {
-    const editId = $("challengeEditId").value;
     const title = $("challengeTitle").value.trim();
     const description = $("challengeDescription").value.trim();
-    const today = challengeDayKey();
-    const targetDate = $("challengeDate")?.value || today;
-    const isToday = targetDate === today;
-    const recurring = isToday && $("challengeRecurring").checked;
 
     if (!title) {
       notify("চ্যালেঞ্জের নাম দাও।");
       $("challengeTitle").focus();
       return;
     }
+
+    // EDIT MODE
+    if (challengeEditIdx !== null && challengeEditDate) {
+      const list = state.challenges.daily[challengeEditDate] || [];
+      const c = list[challengeEditIdx];
+      if (c) {
+        c.title = title;
+        c.description = description;
+        persist();
+        closeChallengeModal();
+        renderChallengesHero();
+        renderUpcomingModal();
+        notify("চ্যালেঞ্জ আপডেট হয়েছে।");
+      }
+      return;
+    }
+
+    // NEW MODE
+    const today = challengeDayKey();
+    const targetDate = $("challengeDate")?.value || today;
     if (targetDate < today) {
       notify("আগের তারিখে চ্যালেঞ্জ যোগ করা যায় না।");
       return;
     }
 
     const list = state.challenges.daily[targetDate] || [];
-
-    if (editId && isToday) {
-      const t = state.challenges.templates.find((x) => x.id === editId);
-      if (t) {
-        t.title = title;
-        t.description = description;
-        t.recurring = recurring;
-      }
-      list.forEach((c) => {
-        if (c.templateId === editId && c.status === "pending") {
-          c.title = title;
-          c.description = description;
-        }
-      });
-      state.challenges.daily[targetDate] = list;
-      persist();
-      closeChallengeModal();
-      renderChallengesHero();
-      notify("চ্যালেঞ্জ আপডেট হয়েছে।");
-      return;
-    }
-
     const cfg = state.challenges.config;
     if (list.length >= cfg.maxPerDay) {
       notify(
@@ -7228,18 +7254,22 @@
       return;
     }
 
-    let templateId = null;
-    if (recurring) {
-      const template = {
+    let templateId = $("challengeTemplatePicker")?.value || null;
+    if (templateId) {
+      const t = state.challenges.templates.find((x) => x.id === templateId);
+      if (!t) templateId = null;
+    }
+
+    if ($("challengeSaveAsTemplate")?.checked) {
+      const newTpl = {
         id: uid("ch"),
         title,
         description,
-        recurring: true,
         active: true,
         createdAt: nowISO(),
       };
-      state.challenges.templates.push(template);
-      templateId = template.id;
+      state.challenges.templates.push(newTpl);
+      if (!templateId) templateId = newTpl.id;
     }
 
     list.push({
@@ -7254,7 +7284,7 @@
     persist();
     closeChallengeModal();
 
-    if (isToday) {
+    if (targetDate === today) {
       renderChallengesHero();
       notify("নতুন চ্যালেঞ্জ যোগ হয়েছে।");
     } else {
@@ -7262,18 +7292,21 @@
         "bn-BD",
         { day: "numeric", month: "long" },
       );
-      notify(`${nice}-এর জন্য সেভ হয়েছে — Upcoming-এ দেখবে।`);
+      notify(`${nice}-এর জন্য সেভ হয়েছে — চ্যালেঞ্জ হাব-এ দেখবে।`);
     }
   }
 
   function removeChallengeToday(idx) {
-    const date = getSelectedDate();
+    const date = challengeDayKey();
     const list = state.challenges.daily[date];
     if (!list || !list[idx]) return;
+    const c = list[idx];
+    if (!confirm(`"${c.title}" মুছে ফেলবে?`)) return;
     list.splice(idx, 1);
     persist();
     renderChallengesHero();
-    notify("আজকের তালিকা থেকে সরানো হয়েছে।");
+    updateTodayNavBadge();
+    notify("চ্যালেঞ্জ মুছে ফেলা হয়েছে।");
   }
 
   function deleteChallengeTemplate(templateId) {
@@ -7298,7 +7331,6 @@
     $("challengeRuleMax").value = String(cfg.maxPerDay || 3);
     $("challengeRuleDayChange").value = cfg.onDayChange || "clear-all";
     $("challengeRuleCountdown").value = String(cfg.countdownSeconds || 10);
-    $("challengeRuleRecurring").checked = !!cfg.recurringDefault;
     $("challengeRulesModal").classList.remove("hidden");
   }
 
@@ -7319,8 +7351,6 @@
     )
       ? rawCountdown
       : 10;
-    state.challenges.config.recurringDefault = !!$("challengeRuleRecurring")
-      .checked;
     persist();
     closeChallengeRules();
     renderChallengesHero();
@@ -7354,25 +7384,25 @@
         completeChallenge(Number(undoBtn.dataset.challengeUndo));
         return;
       }
-      const removeBtn = e.target.closest("[data-challenge-remove]");
-      if (removeBtn) {
-        removeBtn.closest("details")?.removeAttribute("open");
-        removeChallengeToday(Number(removeBtn.dataset.challengeRemove));
+      const editBtn = e.target.closest("[data-challenge-edit]");
+      if (editBtn) {
+        openChallengeEditModal(Number(editBtn.dataset.challengeEdit));
         return;
       }
-      const delBtn = e.target.closest("[data-challenge-delete-template]");
+      const delBtn = e.target.closest("[data-challenge-delete]");
       if (delBtn) {
-        delBtn.closest("details")?.removeAttribute("open");
-        deleteChallengeTemplate(delBtn.dataset.challengeDeleteTemplate);
+        removeChallengeToday(Number(delBtn.dataset.challengeDelete));
         return;
       }
     });
 
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest(".challenge-more")) {
-        document
-          .querySelectorAll("details.challenge-more[open]")
-          .forEach((d) => d.removeAttribute("open"));
+    $("challengeTemplatePicker")?.addEventListener("change", (e) => {
+      const tplId = e.target.value;
+      if (!tplId) return;
+      const t = state.challenges.templates.find((x) => x.id === tplId);
+      if (t) {
+        $("challengeTitle").value = t.title;
+        $("challengeDescription").value = t.description || "";
       }
     });
   }
@@ -7451,46 +7481,164 @@
   }
 
   function renderUpcomingModal() {
-    const host = $("upcomingList");
-    if (!host) return;
-    const today = challengeDayKey();
-    const futureDates = Object.keys(state.challenges.daily)
-      .filter((d) => d > today)
-      .sort();
+    const upcomingHost = $("upcomingList");
+    if (upcomingHost) {
+      const today = challengeDayKey();
+      const futureDates = Object.keys(state.challenges.daily)
+        .filter((d) => d > today)
+        .sort();
 
-    if (!futureDates.length) {
-      host.innerHTML = `<div class="upcoming-empty">কোনো ভবিষ্যতের চ্যালেঞ্জ নেই — উপরে <strong>+ Add</strong> চেপে তারিখ বেছে নাও।</div>`;
-      return;
+      if (!futureDates.length) {
+        upcomingHost.innerHTML = `<div class="upcoming-empty">কোনো ভবিষ্যতের চ্যালেঞ্জ নেই — উপরে <strong>+ Add</strong> চেপে তারিখ বেছে নাও।</div>`;
+      } else {
+        upcomingHost.innerHTML = futureDates
+          .map((date) => {
+            const list = state.challenges.daily[date] || [];
+            if (!list.length) return "";
+            const dateLabel = new Date(date + "T12:00:00").toLocaleDateString(
+              "bn-BD",
+              { weekday: "short", day: "numeric", month: "short" },
+            );
+            const items = list
+              .map(
+                (c, idx) => `
+                <div class="upcoming-item">
+                  <span>${escapeHTML(c.title)}</span>
+                  <div class="upcoming-item-actions">
+                    <button type="button" class="small" data-upcoming-edit="${escapeHTML(date)}" data-upcoming-idx="${idx}" aria-label="Edit">✎</button>
+                    <button type="button" class="small danger" data-upcoming-del="${escapeHTML(date)}" data-upcoming-idx="${idx}" aria-label="Remove">✕</button>
+                  </div>
+                </div>
+              `,
+              )
+              .join("");
+            return `
+              <div class="upcoming-section">
+                <div class="upcoming-date-head">
+                  <strong>${escapeHTML(dateLabel)}</strong>
+                </div>
+                <div class="upcoming-items">${items}</div>
+              </div>
+            `;
+          })
+          .join("");
+      }
     }
 
-    host.innerHTML = futureDates
-      .map((date) => {
-        const list = state.challenges.daily[date] || [];
-        if (!list.length) return "";
-        const dateLabel = new Date(date + "T12:00:00").toLocaleDateString(
-          "bn-BD",
-          { weekday: "short", day: "numeric", month: "short" },
-        );
-        const items = list
+    const tplHost = $("hubTemplateList");
+    if (tplHost) {
+      const templates = state.challenges.templates.filter(
+        (t) => t.active !== false,
+      );
+      if (!templates.length) {
+        tplHost.innerHTML = `<div class="upcoming-empty">এখনো কোনো টেমপ্লেট নেই — উপরে <strong>+ নতুন টেমপ্লেট</strong> চাপো।</div>`;
+      } else {
+        tplHost.innerHTML = templates
           .map(
-            (c, idx) => `
-            <div class="upcoming-item">
-              <span>${escapeHTML(c.title)}</span>
-              <button type="button" class="small danger" data-upcoming-del="${escapeHTML(date)}" data-upcoming-idx="${idx}" aria-label="Remove">✕</button>
+            (t) => `
+            <div class="hub-template-item">
+              <div class="hub-template-info">
+                <strong>${escapeHTML(t.title)}</strong>
+                ${t.description ? `<span class="tiny">${escapeHTML(t.description)}</span>` : ""}
+              </div>
+              <div class="upcoming-item-actions">
+                <button type="button" class="small primary" data-hub-tpl-use="${escapeHTML(t.id)}">+ ব্যবহার</button>
+                <button type="button" class="small" data-hub-tpl-edit="${escapeHTML(t.id)}" aria-label="Edit">✎</button>
+                <button type="button" class="small danger" data-hub-tpl-del="${escapeHTML(t.id)}" aria-label="Delete">🗑</button>
+              </div>
             </div>
           `,
           )
           .join("");
-        return `
-          <div class="upcoming-section">
-            <div class="upcoming-date-head">
-              <strong>${escapeHTML(dateLabel)}</strong>
-            </div>
-            <div class="upcoming-items">${items}</div>
-          </div>
-        `;
-      })
-      .join("");
+      }
+    }
+  }
+
+  function openUpcomingEditModal(date, idx) {
+    const list = state.challenges.daily[date] || [];
+    const c = list[idx];
+    if (!c) return;
+
+    challengeEditIdx = idx;
+    challengeEditDate = date;
+    $("challengeEditId").value = "";
+    $("challengeTitle").value = c.title;
+    $("challengeDescription").value = c.description || "";
+    $("challengeSaveAsTemplate").checked = false;
+
+    const dateInput = $("challengeDate");
+    if (dateInput) {
+      dateInput.value = date;
+      dateInput.min = challengeDayKey();
+    }
+
+    $("challengeTemplateField")?.classList.add("hidden");
+    $("challengeSaveAsTemplateRow")?.classList.add("hidden");
+    $("challengeDateField")?.classList.add("hidden");
+
+    $("challengeModalTitle").textContent = "চ্যালেঞ্জ এডিট";
+    if (typeof refreshDateButtons === "function") refreshDateButtons();
+    $("challengeModal").classList.remove("hidden");
+    setTimeout(() => $("challengeTitle").focus(), 60);
+  }
+
+  function openTemplateEditModal(templateId) {
+    const t = templateId
+      ? state.challenges.templates.find((x) => x.id === templateId)
+      : null;
+    $("templateEditId").value = t ? t.id : "";
+    $("templateEditTitle").textContent = t ? "টেমপ্লেট এডিট" : "নতুন টেমপ্লেট";
+    $("templateTitle").value = t ? t.title : "";
+    $("templateDescription").value = t ? t.description || "" : "";
+    $("templateEditModal").classList.remove("hidden");
+    setTimeout(() => $("templateTitle").focus(), 60);
+  }
+
+  function closeTemplateEditModal() {
+    $("templateEditModal").classList.add("hidden");
+    $("templateEditId").value = "";
+  }
+
+  function saveTemplateFromModal() {
+    const id = $("templateEditId").value;
+    const title = $("templateTitle").value.trim();
+    const description = $("templateDescription").value.trim();
+    if (!title) {
+      notify("টেমপ্লেটের নাম দাও।");
+      $("templateTitle").focus();
+      return;
+    }
+    if (id) {
+      const t = state.challenges.templates.find((x) => x.id === id);
+      if (t) {
+        t.title = title;
+        t.description = description;
+      }
+    } else {
+      state.challenges.templates.push({
+        id: uid("ch"),
+        title,
+        description,
+        active: true,
+        createdAt: nowISO(),
+      });
+    }
+    persist();
+    closeTemplateEditModal();
+    renderUpcomingModal();
+    notify(id ? "টেমপ্লেট আপডেট হয়েছে।" : "টেমপ্লেট যোগ হয়েছে।");
+  }
+
+  function deleteTemplateById(id) {
+    const t = state.challenges.templates.find((x) => x.id === id);
+    if (!t) return;
+    if (!confirm(`"${t.title}" টেমপ্লেট মুছে ফেলবে?`)) return;
+    state.challenges.templates = state.challenges.templates.filter(
+      (x) => x.id !== id,
+    );
+    persist();
+    renderUpcomingModal();
+    notify("টেমপ্লেট মুছে ফেলা হয়েছে।");
   }
 
   function addUpcomingChallenge(date) {
@@ -7516,12 +7664,17 @@
 
   function deleteUpcomingChallenge(date, idx) {
     if (!state.challenges.daily[date]) return;
-    state.challenges.daily[date].splice(idx, 1);
-    if (state.challenges.daily[date].length === 0) {
+    const list = state.challenges.daily[date];
+    const c = list[idx];
+    if (!c) return;
+    if (!confirm(`"${c.title}" মুছে ফেলবে?`)) return;
+    list.splice(idx, 1);
+    if (list.length === 0) {
       delete state.challenges.daily[date];
     }
     persist();
     renderUpcomingModal();
+    notify("চ্যালেঞ্জ মুছে ফেলা হয়েছে।");
   }
 
   function bindUpcomingModal() {
@@ -7537,8 +7690,46 @@
           delBtn.dataset.upcomingDel,
           Number(delBtn.dataset.upcomingIdx),
         );
+        return;
+      }
+      const editBtn = e.target.closest("[data-upcoming-edit]");
+      if (editBtn) {
+        openUpcomingEditModal(
+          editBtn.dataset.upcomingEdit,
+          Number(editBtn.dataset.upcomingIdx),
+        );
+        return;
       }
     });
+
+    $("hubNewTemplateBtn")?.addEventListener("click", () =>
+      openTemplateEditModal(""),
+    );
+
+    $("hubTemplateList")?.addEventListener("click", (e) => {
+      const useBtn = e.target.closest("[data-hub-tpl-use]");
+      if (useBtn) {
+        closeUpcomingModal();
+        openChallengeModal({ fromTemplateId: useBtn.dataset.hubTplUse });
+        return;
+      }
+      const editBtn = e.target.closest("[data-hub-tpl-edit]");
+      if (editBtn) {
+        openTemplateEditModal(editBtn.dataset.hubTplEdit);
+        return;
+      }
+      const delBtn = e.target.closest("[data-hub-tpl-del]");
+      if (delBtn) {
+        deleteTemplateById(delBtn.dataset.hubTplDel);
+        return;
+      }
+    });
+
+    $("templateEditCancel")?.addEventListener("click", closeTemplateEditModal);
+    $("templateEditModal")?.addEventListener("click", (e) => {
+      if (e.target === $("templateEditModal")) closeTemplateEditModal();
+    });
+    $("templateEditSave")?.addEventListener("click", saveTemplateFromModal);
   }
 
   /* ============================================================

@@ -4436,6 +4436,88 @@ html[data-theme="dark"] .tracker-cell.done:hover {
   background: #4ade80;
   color: #14352b;
 }
+
+/* ============================================================
+   CHALLENGE HUB + ICON BUTTONS
+   ============================================================ */
+.challenge-icon-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  transition:
+    color 0.15s var(--ease),
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+.challenge-icon-btn:hover {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.challenge-icon-btn.danger:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+.hub-section {
+  margin-bottom: 18px;
+}
+.hub-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.hub-section-head strong {
+  font-size: 13.5px;
+  font-weight: 750;
+}
+
+.hub-template-list {
+  display: grid;
+  gap: 8px;
+}
+.hub-template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.hub-template-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.hub-template-info strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.hub-template-info .tiny {
+  font-size: 11.5px;
+}
+
+.upcoming-item-actions {
+  display: flex;
+  gap: 5px;
+  flex: none;
+}
 @media (max-width: 720px) {
   .tracker-cell {
     width: 30px;
