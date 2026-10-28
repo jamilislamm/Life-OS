@@ -468,6 +468,26 @@
               </div>
               <div id="challengesList" class="challenges-list"></div>
             </div>
+
+            <article class="card todo-card">
+              <div class="todo-head">
+                <h2>📝 To-do List</h2>
+                <span class="todo-progress" id="todoProgress">0 / 0</span>
+              </div>
+              <div id="todoList" class="todo-list"></div>
+              <form id="todoAddForm" class="todo-add-form" autocomplete="off">
+                <input
+                  id="todoInput"
+                  placeholder="নতুন কাজ যোগ করো..."
+                  maxlength="200"
+                />
+                <select id="todoActionSelect" aria-label="Action"></select>
+                <button type="submit" class="primary small" aria-label="Add">
+                  +
+                </button>
+              </form>
+            </article>
+
             <div class="dash-shell">
               <article class="card dash-main">
                 <div class="dash-toolbar">

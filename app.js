@@ -161,6 +161,7 @@
       },
       actionCheckins: {},
       monthlyTracker: { month: localDate().slice(0, 7), hidden: [] },
+      todos: [],
     };
   };
   let state = loadState();
@@ -267,6 +268,20 @@
             ? data.monthlyTracker.hidden
             : [],
         },
+        todos: Array.isArray(data.todos)
+          ? data.todos
+              .filter((t) => t && typeof t === "object" && t.id)
+              .map((t, i) => ({
+                id: String(t.id),
+                text: String(t.text || "").trim(),
+                actionId: t.actionId ? String(t.actionId) : null,
+                done: !!t.done,
+                completedAt: t.completedAt || null,
+                createdAt: t.createdAt || nowISO(),
+                order: Number.isFinite(Number(t.order)) ? Number(t.order) : i,
+              }))
+              .filter((t) => t.text)
+          : [],
       };
     } catch (e) {
       console.warn("Could not load Life OS data", e);
@@ -2290,6 +2305,10 @@
     fillSelect($("manualAction"), acts, "Action বেছে নাও (ঐচ্ছিক)");
     fillSelect($("presetAction"), acts, "(Focus Timer আলাদা; tracking হবে না)");
     fillSelect($("logFilterAction"), acts, "সব Action");
+    if ($("todoActionSelect")) {
+      const prev = $("todoActionSelect").value;
+      fillSelect($("todoActionSelect"), acts, "💡 Idea", prev);
+    }
     fillSelect(
       $("focusPreset"),
       presets,
@@ -3279,6 +3298,7 @@
     renderSelects();
     renderToday();
     renderMonthlyTracker();
+    renderTodos();
     renderActions();
     renderTrackingMini();
     renderFocus();
@@ -7953,6 +7973,211 @@
   }
 
   /* ============================================================
+     TO-DO LIST
+     ============================================================ */
+  function todoById(id) {
+    return state.todos.find((t) => t.id === id) || null;
+  }
+
+  function renderTodos() {
+    const host = $("todoList");
+    if (!host) return;
+
+    const pending = state.todos.filter((t) => !t.done);
+    const completed = state.todos.filter((t) => t.done);
+    pending.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+    completed.sort((a, b) =>
+      String(b.completedAt || "").localeCompare(String(a.completedAt || "")),
+    );
+    const all = [...pending, ...completed];
+
+    if (!all.length) {
+      host.innerHTML = "";
+      updateTodoProgress();
+      return;
+    }
+
+    host.innerHTML = all
+      .map((t) => {
+        const a = t.actionId ? actionById(t.actionId) : null;
+        const chipCls = a ? "todo-chip" : "todo-chip idea";
+        const chipText = a ? actionEmojiName(a) : "💡 Idea";
+        return `
+          <div class="todo-row ${t.done ? "done" : ""}" data-todo-row="${escapeHTML(t.id)}">
+            <button type="button" class="todo-check" data-todo-toggle="${escapeHTML(t.id)}" aria-label="${t.done ? "Undo" : "Complete"}">${t.done ? "✓" : ""}</button>
+            <span class="todo-text" contenteditable="plaintext-only" data-todo-text="${escapeHTML(t.id)}" spellcheck="false">${escapeHTML(t.text)}</span>
+            <span class="${chipCls}" data-todo-chip="${escapeHTML(t.id)}" title="Change action">${escapeHTML(chipText)}</span>
+            <button type="button" class="todo-del" data-todo-del="${escapeHTML(t.id)}" aria-label="Delete">×</button>
+          </div>
+        `;
+      })
+      .join("");
+
+    updateTodoProgress();
+  }
+
+  function updateTodoProgress() {
+    const el = $("todoProgress");
+    if (!el) return;
+    const total = state.todos.length;
+    const done = state.todos.filter((t) => t.done).length;
+    el.textContent = `${done} / ${total}`;
+  }
+
+  function toggleTodoById(id) {
+    const t = todoById(id);
+    if (!t) return;
+    t.done = !t.done;
+    t.completedAt = t.done ? nowISO() : null;
+    persist();
+    renderTodos();
+  }
+
+  function deleteTodoById(id) {
+    state.todos = state.todos.filter((t) => t.id !== id);
+    persist();
+    renderTodos();
+    closeTodoChipPicker();
+  }
+
+  function openTodoChipPicker(todoId, anchorEl) {
+    closeTodoChipPicker();
+    const t = todoById(todoId);
+    if (!t || !anchorEl) return;
+
+    const acts = activeActions();
+    const popup = document.createElement("div");
+    popup.className = "todo-chip-popup";
+    popup.id = "todoChipPopup";
+
+    let html = `<button type="button" data-todo-chip-pick="" data-todo-id="${escapeHTML(todoId)}" class="${!t.actionId ? "active" : ""}">💡 Idea</button>`;
+    acts.forEach((a) => {
+      html += `<button type="button" data-todo-chip-pick="${escapeHTML(a.id)}" data-todo-id="${escapeHTML(todoId)}" class="${t.actionId === a.id ? "active" : ""}">${escapeHTML(actionEmojiName(a))}</button>`;
+    });
+    popup.innerHTML = html;
+
+    document.body.appendChild(popup);
+
+    const rect = anchorEl.getBoundingClientRect();
+    const pw = popup.offsetWidth || 200;
+    const ph = popup.offsetHeight || 200;
+    let left = Math.min(window.innerWidth - pw - 8, rect.left);
+    if (left < 8) left = 8;
+    let top = rect.bottom + 4;
+    if (top + ph > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - ph - 4);
+    }
+    popup.style.left = left + "px";
+    popup.style.top = top + "px";
+
+    popup.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-todo-chip-pick]");
+      if (!btn) return;
+      const tid = btn.dataset.todoId;
+      const aid = btn.dataset.todoChipPick || null;
+      const todo = todoById(tid);
+      if (todo) {
+        todo.actionId = aid;
+        persist();
+        renderTodos();
+      }
+      closeTodoChipPicker();
+    });
+  }
+
+  function closeTodoChipPicker() {
+    document.getElementById("todoChipPopup")?.remove();
+  }
+
+  function bindTodoEvents() {
+    $("todoAddForm")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = $("todoInput");
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text) {
+        input.focus();
+        return;
+      }
+      const actionId = $("todoActionSelect")?.value || null;
+      state.todos.push({
+        id: uid("todo"),
+        text,
+        actionId,
+        done: false,
+        completedAt: null,
+        createdAt: nowISO(),
+        order: state.todos.length,
+      });
+      persist();
+      input.value = "";
+      input.focus();
+      renderTodos();
+    });
+
+    $("todoList")?.addEventListener("click", (e) => {
+      const toggleBtn = e.target.closest("[data-todo-toggle]");
+      if (toggleBtn) {
+        toggleTodoById(toggleBtn.dataset.todoToggle);
+        return;
+      }
+      const delBtn = e.target.closest("[data-todo-del]");
+      if (delBtn) {
+        deleteTodoById(delBtn.dataset.todoDel);
+        return;
+      }
+      const chip = e.target.closest("[data-todo-chip]");
+      if (chip) {
+        openTodoChipPicker(chip.dataset.todoChip, chip);
+        return;
+      }
+    });
+
+    $("todoList")?.addEventListener("keydown", (e) => {
+      const textEl = e.target.closest("[data-todo-text]");
+      if (!textEl) return;
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        textEl.blur();
+      } else if (e.key === "Escape") {
+        const t = todoById(textEl.dataset.todoText);
+        if (t) textEl.textContent = t.text;
+        textEl.blur();
+      }
+    });
+
+    $("todoList")?.addEventListener(
+      "blur",
+      (e) => {
+        const textEl = e.target.closest("[data-todo-text]");
+        if (!textEl) return;
+        const id = textEl.dataset.todoText;
+        const newText = textEl.textContent.trim();
+        const t = todoById(id);
+        if (!t) return;
+        if (!newText) {
+          deleteTodoById(id);
+          return;
+        }
+        if (t.text !== newText) {
+          t.text = newText;
+          persist();
+        }
+      },
+      true,
+    );
+
+    document.addEventListener("click", (e) => {
+      if (
+        !e.target.closest("#todoChipPopup") &&
+        !e.target.closest("[data-todo-chip]")
+      ) {
+        closeTodoChipPicker();
+      }
+    });
+  }
+
+  /* ============================================================
      VISUAL REMINDERS — Image + OS Notification + Custom Sound
      ============================================================ */
   const VREM_KEY = "lifeOS.visualReminders.v1";
@@ -8542,6 +8767,7 @@
     bindChallengeEvents();
     bindUpcomingModal();
     bindTrackerEvents();
+    bindTodoEvents();
     lastChallengeDay = challengeDayKey();
     lifeMapRelocatePopups();
     syncThemeButton();

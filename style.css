@@ -4518,6 +4518,366 @@ html[data-theme="dark"] .tracker-cell.done:hover {
   gap: 5px;
   flex: none;
 }
+
+/* ============================================================
+   TO-DO LIST
+   ============================================================ */
+.todo-card {
+  margin-bottom: 16px;
+  padding: 16px 20px 18px;
+}
+.todo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.todo-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 750;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.todo-progress {
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.todo-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.todo-list:empty::before {
+  content: "এখনো কোনো কাজ নেই — নিচে লিখে যোগ করো।";
+  padding: 18px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  display: block;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.todo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  transition:
+    background 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    opacity 0.3s var(--ease);
+  animation: todoSlideIn 0.32s var(--ease) both;
+}
+.todo-row:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.todo-row.done {
+  opacity: 0.55;
+  background: var(--panel);
+}
+.todo-row.done .todo-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  color: var(--muted);
+}
+@keyframes todoSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.todo-check {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--panel);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  transition:
+    border-color 0.15s var(--ease),
+    background 0.15s var(--ease),
+    color 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+.todo-check:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+  transform: scale(1.1);
+}
+.todo-row.done .todo-check {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.todo-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  outline: none;
+  border-radius: 6px;
+  padding: 2px 4px;
+  transition: background 0.15s var(--ease);
+  cursor: text;
+}
+.todo-text:focus {
+  background: var(--panel);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.todo-chip {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border: 1px solid var(--accent);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    filter 0.15s var(--ease),
+    background 0.15s var(--ease);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.todo-chip:hover {
+  filter: brightness(0.96);
+}
+.todo-chip.idea {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--line-strong);
+}
+.todo-del {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition:
+    opacity 0.15s var(--ease),
+    color 0.15s var(--ease),
+    background 0.15s var(--ease);
+  line-height: 1;
+}
+.todo-row:hover .todo-del,
+.todo-row.done .todo-del,
+.todo-row:focus-within .todo-del {
+  opacity: 1;
+}
+.todo-del:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.todo-add-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  margin-top: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+}
+.todo-add-form #todoInput {
+  flex: 1;
+  padding: 9px 12px;
+  font-size: 13px;
+  border-radius: 10px;
+  border-color: var(--line-strong);
+}
+.todo-add-form #todoActionSelect {
+  width: auto;
+  max-width: 160px;
+  padding: 9px 28px 9px 10px;
+  font-size: 12px;
+  border-radius: 10px;
+  border-color: var(--line-strong);
+}
+.todo-add-form button {
+  padding: 9px 16px;
+  height: auto;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.todo-chip-popup {
+  position: fixed;
+  z-index: 300;
+  min-width: 180px;
+  max-width: 240px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: 2px;
+  animation: popIn 0.14s var(--ease) both;
+}
+.todo-chip-popup button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.todo-chip-popup button:hover {
+  background: var(--hover);
+  border-color: transparent;
+}
+.todo-chip-popup button.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+/* ---------- Dark Mode overrides ---------- */
+html[data-theme="dark"] .todo-row {
+  background: #333b52;
+  border-color: #545d7a;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+html[data-theme="dark"] .todo-row:hover {
+  background: #3a4258;
+  border-color: #7a84a8;
+}
+html[data-theme="dark"] .todo-check {
+  border-color: #a5b4fc;
+  background: rgba(165, 180, 252, 0.08);
+}
+html[data-theme="dark"] .todo-check:hover {
+  background: rgba(165, 180, 252, 0.22);
+  border-color: #c7d2fe;
+}
+html[data-theme="dark"] .todo-row.done .todo-check {
+  background: #4ade80;
+  border-color: #4ade80;
+  color: #14352b;
+}
+html[data-theme="dark"] .todo-chip {
+  background: rgba(165, 180, 252, 0.18);
+  border-color: rgba(165, 180, 252, 0.55);
+  color: #dbe4ff;
+}
+html[data-theme="dark"] .todo-chip.idea {
+  background: transparent;
+  border-color: #5a6488;
+  color: #a5adc5;
+}
+html[data-theme="dark"] .todo-del {
+  opacity: 0.4;
+}
+html[data-theme="dark"] .todo-row:hover .todo-del,
+html[data-theme="dark"] .todo-row.done .todo-del,
+html[data-theme="dark"] .todo-row:focus-within .todo-del {
+  opacity: 1;
+  color: #fca5a5;
+}
+html[data-theme="dark"] .todo-add-form {
+  background: #1d2333;
+  border-color: #4a5470;
+}
+html[data-theme="dark"] .todo-add-form #todoInput,
+html[data-theme="dark"] .todo-add-form #todoActionSelect {
+  background: #272d3e;
+  border-color: #5a6488;
+}
+html[data-theme="dark"] .todo-add-form #todoInput:focus,
+html[data-theme="dark"] .todo-add-form #todoActionSelect:focus {
+  background: #31384c;
+  border-color: #a5b4fc;
+}
+html[data-theme="dark"] .todo-progress {
+  background: #1d2333;
+  border-color: #4a5470;
+}
+html[data-theme="dark"] .todo-list:empty::before {
+  background: #1d2333;
+  border-color: #4a5470;
+}
+html[data-theme="dark"] .todo-chip-popup {
+  background: #2a3145;
+  border-color: #5a6488;
+}
+
+@media (max-width: 600px) {
+  .todo-card {
+    padding: 14px 16px;
+  }
+  .todo-add-form {
+    flex-wrap: wrap;
+  }
+  .todo-add-form #todoInput {
+    flex: 1 1 100%;
+    order: 1;
+  }
+  .todo-add-form #todoActionSelect {
+    flex: 1;
+    order: 2;
+    max-width: none;
+  }
+  .todo-add-form button {
+    order: 3;
+    flex: 0 0 auto;
+  }
+  .todo-chip {
+    max-width: 100px;
+  }
+  .todo-del {
+    opacity: 1;
+  }
+}
 @media (max-width: 720px) {
   .tracker-cell {
     width: 30px;
